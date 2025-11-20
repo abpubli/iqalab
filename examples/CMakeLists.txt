@@ -3,3 +3,6 @@ target_link_libraries(jpeg_block_scan PRIVATE iqalab)
 
 add_executable(regions_demo regions_demo.cpp)
 target_link_libraries(regions_demo PRIVATE iqalab)
+
+add_executable(lab_shift_demo lab_shift_demo.cpp)
+target_link_libraries(lab_shift_demo PRIVATE iqalab)

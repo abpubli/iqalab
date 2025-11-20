@@ -3,6 +3,10 @@ set(IQALAB_SOURCES
         blocking.cpp
         region_masks.cpp
         image_type.cpp
+        color_shift.cpp
+        ../include/iqalab/color_shift.hpp
+        math_utils.cpp
+        ../include/iqalab/math_utils.hpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})
