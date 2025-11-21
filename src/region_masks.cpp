@@ -1,4 +1,3 @@
-#include <opencv2/core.hpp>
 #include "iqalab/region_masks.hpp"
 
 #include <opencv2/imgproc.hpp>
