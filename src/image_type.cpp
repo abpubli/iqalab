@@ -1,5 +1,7 @@
 #include "iqalab/image_type.hpp"
 
+#include "iqalab/utils/path_utils.hpp"
+
 #include <algorithm>
 #include <cstring>
 
@@ -29,15 +31,7 @@ const char *iqa::to_string(ImageType t) {
   }
 }
 
-std::string iqa::lower_extension(const std::filesystem::path &p) {
-  std::string ext = p.extension().string(); // z kropką, np. ".JPG"
-  std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return ext;
-}
-
-bool iqa::detect_image_type1(const std::filesystem::path &p) {
+bool iqa::detect_image_type(const std::filesystem::path &p) {
   std::ifstream f(p, std::ios::binary);
   if (!f)
     return false;
@@ -88,7 +82,7 @@ iqa::ImageType iqa::get_image_type(const std::string &path) {
   namespace fs = std::filesystem;
 
   fs::path p(path);
-  const std::string ext = lower_extension(p);
+  const std::string ext = utils::lower_extension(p);
 
   if (ext == ".bmp" || ext == ".dib") {
     return ImageType::Bmp;

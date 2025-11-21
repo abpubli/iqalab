@@ -6,6 +6,12 @@ set(IQALAB_SOURCES
         color_shift.cpp
         math_utils.cpp
         impulse.cpp
+        utils/path_utils.cpp
+        utils/file_grouping.cpp
+        ../include/iqalab/utils/path_utils.hpp
+        utils/path_utils.cpp
+        ../include/iqalab/utils/file_grouping.hpp
+        utils/file_grouping.cpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})

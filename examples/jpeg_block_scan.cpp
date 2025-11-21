@@ -28,7 +28,7 @@ std::vector<fs::path> scan_file_or_directory(const fs::path& input)
             if (!entry.is_regular_file())
                 continue;
             const fs::path& p = entry.path();
-            if (!iqa::detect_image_type1(p))
+            if (!iqa::detect_image_type(p))
                 continue;
             result.push_back(p);
         }

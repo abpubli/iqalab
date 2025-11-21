@@ -19,9 +19,7 @@ enum class ImageType {
 
 const char* to_string(ImageType t);
 
-std::string lower_extension(const std::filesystem::path & p);
-
-bool detect_image_type1(const std::filesystem::path& p);
+bool detect_image_type(const std::filesystem::path& p);
 
 ImageType get_image_type(const std::string& path);
 
