@@ -4,9 +4,8 @@ set(IQALAB_SOURCES
         region_masks.cpp
         image_type.cpp
         color_shift.cpp
-        ../include/iqalab/color_shift.hpp
         math_utils.cpp
-        ../include/iqalab/math_utils.hpp
+        impulse.cpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})
