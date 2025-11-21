@@ -120,6 +120,11 @@ static void process_single_file(const Options& opts)
         return;
     }
 
+    if (count_nonzero_threshold(mask) == 0) {
+        std::cout << "no blocks, skip, for: " << opts.distPath << "\n";
+        return;;
+    }
+
     cv::Mat out = apply_block_mask(distImg, mask);
     if (out.empty()) {
         return;
@@ -248,7 +253,11 @@ int main(int argc, char** argv)
 
     if (refIsFile && distIsFile && (outIsFile || !outIsDir)) {
         // Tryb: pojedyncze pliki (trzeci argument może być jeszcze nieistniejącym plikiem).
+        auto start = std::chrono::high_resolution_clock::now();
         process_single_file(opts);
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto duration = duration_cast<std::chrono::milliseconds>(stop - start);
+        std::cout << "Duration: " << duration.count()/1e3 << " s.\n";
     } else if (refIsDir && distIsDir) {
         auto start = std::chrono::high_resolution_clock::now();
         process_directory_mode(opts);

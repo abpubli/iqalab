@@ -2,6 +2,7 @@
 
 #include <deque>
 #include <iostream>
+#include <limits>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -63,7 +64,8 @@ void analyzeFlatBlocksRow(
 
     // save the line mask
     for (int bx = 0; bx < cols; ++bx) {
-        maskRow[bx] = inBlock[bx] ? 255 : 0;
+        if (inBlock[bx])
+            maskRow[bx] = 255;
     }
 }
 
@@ -128,12 +130,12 @@ std::vector<Region> buildRegionsFromMask(const cv::Mat& mask)
                 if (runAssigned[i]) continue;
 
                 const Run& r = runs[i];
-                // poziome nakładanie się [x0,x1)
+                // horizontal overlap [x0,x1)
                 bool overlap =
                     !(r.x1 <= reg.x0 || r.x0 >= reg.x1);
 
                 if (overlap && r.y == reg.y1 + 1) {
-                    // rozszerzamy region
+                    // we are expanding the region
                     reg.x0 = std::min(reg.x0, r.x0);
                     reg.x1 = std::max(reg.x1, r.x1);
                     reg.y1 = r.y;
@@ -180,11 +182,13 @@ cv::Mat flat_blocking_to_mask(const cv::Mat& refBGR, const cv::Mat& distBGR) {
     cv::Mat distBGR32;
     cv::Mat ref;
     cv::Mat dist;
+    double sampleThr = 0.15;
     refBGR.convertTo(refBGR32, CV_32FC3, 1.0/255.0);
     cv::cvtColor(refBGR32, ref, cv::COLOR_BGR2Lab);
     distBGR.convertTo(distBGR32, CV_32FC3, 1.0/255.0);
     cv::cvtColor(distBGR32, dist, cv::COLOR_BGR2Lab);
 
+    // 1. Preliminary mask of “flat” fragments of poems
     cv::Mat flatMask(dist.rows, dist.cols, CV_8U, cv::Scalar(0));
     for (int y = 0; y < dist.rows; ++y) {
         const cv::Vec3f* rowRef  = ref.ptr<cv::Vec3f>(y);
@@ -192,40 +196,64 @@ cv::Mat flat_blocking_to_mask(const cv::Mat& refBGR, const cv::Mat& distBGR) {
         uchar* maskRow = flatMask.ptr<uchar>(y);
         analyzeFlatBlocksRow(dist.cols, rowRef, rowDist, maskRow);
     }
+
+    // 2. Gentle morphological closure – we combine blocks in one region,
+    //    while smoothing out minor gaps.
+    cv::Mat closedMask;
+    {
+        // kernel 3x3 zwykle wystarcza; możesz podbić do 5x5, jeśli bloki
+        // są bardziej „poszarpane”
+        cv::Mat kernel = cv::getStructuringElement(
+            cv::MORPH_RECT,
+            cv::Size(3, 3)
+        );
+        cv::morphologyEx(flatMask, closedMask, cv::MORPH_CLOSE, kernel);
+    }
+
     cv::Mat finalMask(flatMask.size(), CV_8U, cv::Scalar(0));
 
-    const float maxL = 100.0f;
-    const float T_diff      = 0.12f * maxL;  // ~12 L*
-    const float T_refDetail = 0.03f * maxL;  // ~3 L*
-    const float T_flat      = 0.2f * maxL;  // ~1 L*
-    const float minRatio    = 0.3f;          // min. fill in bbox
-    const int   minArea     = 64;            // cut off all the small stuff
+    const float maxL       = 100.0f;
+    const float T_diff     = 0.08f * maxL;  // ~12 L*
+    const float T_refDetail= 0.03f * maxL;  // ~3 L*
+    const float T_flat     = 0.2f * maxL;  // ~2 L*
+    const float minRatio   = 0.40f;         // min. wypełnienie bbox
+    const int   minArea    = 64;            // odetnij drobnicę
 
-    std::vector<Region> regions = buildRegionsFromMask(flatMask);
-    std::cout << regions.size() << std::endl;
+    // 3. We build regions from the mask after closing
+    std::vector<Region> regions = buildRegionsFromMask(closedMask);
 
+    double best = std::numeric_limits<float>::max();
+
+    int maxW = 0;
+    int maxH = 0;
     for (const Region& reg : regions) {
         int w = reg.x1 - reg.x0;
         int h = reg.y1 - reg.y0;
         if (w <= 0 || h <= 0) continue;
         if (reg.area < minArea) continue;
-        if (cv::min(reg.x1 - reg.x0, reg.y1 - reg.y0)<4) continue;
+        if (std::min(w, h) < 8) continue; // very elongated lines
 
         int pixelsBox = w * h;
-        float ratioMask = static_cast<float>(reg.area) / static_cast<float>(pixelsBox);
+        float ratioMask = static_cast<float>(reg.area) /
+                          static_cast<float>(pixelsBox);
+
+        // garbage: poor filling of the rectangle -> reject immediately
+        if (ratioMask < minRatio)
+            continue;
 
         double sumDiff = 0.0;
         double sumRef  = 0.0, sumRef2  = 0.0;
         double sumDist = 0.0, sumDist2 = 0.0;
         int count = 0;
 
+        // 4. We only count statistics from the original flatMask mask.
         for (int y = reg.y0; y <= reg.y1; ++y) {
-            const uchar* mrow = flatMask.ptr<uchar>(y);
-            const cv::Vec3f* rrow = ref.ptr<cv::Vec3f>(y);
-            const cv::Vec3f* drow = dist.ptr<cv::Vec3f>(y);
+            const uchar* mrow       = flatMask.ptr<uchar>(y);
+            const cv::Vec3f* rrow   = ref.ptr<cv::Vec3f>(y);
+            const cv::Vec3f* drow   = dist.ptr<cv::Vec3f>(y);
 
             for (int x = reg.x0; x <= reg.x1; ++x) {
-                if (!mrow[x]) continue; // we only count statistics where mask=1
+                if (!mrow[x]) continue;
 
                 const cv::Vec3f& rv = rrow[x];
                 const cv::Vec3f& dv = drow[x];
@@ -258,7 +286,6 @@ cv::Mat flat_blocking_to_mask(const cv::Mat& refBGR, const cv::Mat& distBGR) {
         double stdDist   = std::sqrt(varDist);
 
         bool isTransmissionBlock =
-            (ratioMask >= minRatio) &&
             (meanDiff  >= T_diff) &&
             (stdRef    >= T_refDetail) &&
             (stdDist   <= T_flat);
@@ -266,16 +293,31 @@ cv::Mat flat_blocking_to_mask(const cv::Mat& refBGR, const cv::Mat& distBGR) {
         if (!isTransmissionBlock)
             continue;
 
-        // select region in finalMask
+        // 5. We only copy those pixels to finalMask that were in
+        //    the original flat mask – we do not flood the center “by force”.
+        size_t cnt1=0, cnt2=0;
         for (int y = reg.y0; y <= reg.y1; ++y) {
-            uchar* frow = finalMask.ptr<uchar>(y);
+            const uchar* mrow = flatMask.ptr<uchar>(y);
+            uchar* frow       = finalMask.ptr<uchar>(y);
             for (int x = reg.x0; x <= reg.x1; ++x) {
-                if (flatMask.at<uchar>(y,x)) {
+                if (!mrow[x])
+                    cnt1++;
+                else
+                    cnt2++;
+                if (mrow[x])
+                    {
                     frow[x] = 255;
                 }
             }
         }
+        best = std::min(best, (double)cnt1 / (cnt1+cnt2));
+        maxW = std::max(maxW, w);
+        maxH = std::max(maxH, h);
     }
+    double maxRatio = (double)maxW/maxH;
+    double maxSide = std::max(maxW,maxH);
+    if (best >= sampleThr || maxRatio>3 || maxRatio<1/3. || maxSide>=85)
+        finalMask.setTo(0);
     return finalMask;
 }
 }
