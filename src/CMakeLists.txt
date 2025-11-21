@@ -13,6 +13,7 @@ set(IQALAB_SOURCES
         ../include/iqalab/utils/file_grouping.hpp
         utils/file_grouping.cpp
         utils/mask_utils.cpp
+        flat_blocking.cpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})

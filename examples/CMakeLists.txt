@@ -12,3 +12,6 @@ target_link_libraries(impulse_removal PRIVATE iqalab)
 
 add_executable(impulse_mask_tool impulse_mask_tool.cpp)
 target_link_libraries(impulse_mask_tool PRIVATE iqalab)
+
+add_executable(blocking_mask_tool blocking_mask_tool.cpp)
+target_link_libraries(blocking_mask_tool PRIVATE iqalab)

@@ -8,8 +8,7 @@
 
 namespace fs = std::filesystem;
 
-namespace iqa {
-namespace utils {
+namespace iqa::utils {
 
 static std::string to_lower_copy(const std::string& s)
 {
@@ -108,5 +107,5 @@ FileGroups group_distorted_by_reference(
     return groups;
 }
 
-} // namespace utils
-} // namespace iqa
+} // namespace iqa::utils
+
