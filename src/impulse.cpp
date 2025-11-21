@@ -31,6 +31,7 @@ std::size_t count_impulses(const cv::Mat& impulseMask)
 //    difference along the row.
 //  - if any channel marks a pixel as impulse, the final mask at that column is 255.
 static void detect_impulses_row_to_mask(int cols, const cv::Vec3f *rowRef, const cv::Vec3f *rowDist, uchar *rowOut) {
+    std::memset(rowOut, 0, static_cast<std::size_t>(cols));
     for (int channel = 0; channel < 3; channel++) {
         double sum_diffs = 0;
         double sum_dx = 0;
@@ -112,8 +113,7 @@ cv::Mat impulse_to_mask(const cv::Mat& refLab32,
     assert(refLab32.type() == CV_32FC3);
     assert(distLab32.type() == CV_32FC3);
 
-    cv::Mat impulseMask;
-    impulseMask.create(distLab32.size(), CV_8U);
+    cv::Mat impulseMask(distLab32.size(), CV_8U, cv::Scalar(0));
 
     const int rows = distLab32.rows;
     const int cols = distLab32.cols;
