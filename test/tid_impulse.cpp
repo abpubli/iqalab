@@ -50,7 +50,7 @@ static bool process_pair(const fs::path& refPath,
     cv::Mat mask = iqa::make_channel_max_diff_mask(refBGR, distBGR);
     size_t count = iqa::count_nonzero_threshold(mask,1);
     std::cout << "Processing mask: " << distPath.filename().string()
-                << "  -> impulses detected = " << count << "\n";
+                << "  -> diff detected = " << count << "\n";
 
     if (!cv::imwrite(outMaskPath.string(), mask)) {
         std::cerr << "ERROR: cannot write output image: " << outMaskPath.string() << "\n";

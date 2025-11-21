@@ -75,8 +75,8 @@ static void process_single_file(const CliOptions& opts)
         return;
     }
 
-    cv::Mat mask = impulse_to_mask_bgr8(refBGR, distBGR); // CV_8U, 0/255
-    std::size_t nImp = count_impulses(mask);
+    size_t nImp;
+    cv::Mat mask = impulse_to_mask_bgr8(refBGR, distBGR, nImp); // CV_8U, 0/255
 
     auto parentPath = outPath.parent_path();
     if (!parentPath.empty())
@@ -155,9 +155,9 @@ static void process_directory_mode(const CliOptions& opts)
                 continue;
             }
 
-            cv::Mat mask = impulse_to_mask_bgr8(refBGR, distBGR);
+            std::size_t nImp;
+            cv::Mat mask = impulse_to_mask_bgr8(refBGR, distBGR, nImp);
             // count impulses
-            std::size_t nImp = count_impulses(mask);
             fs::path outMaskPath = make_mask_output_path(outDir, distPath);
             fs::create_directories(outMaskPath.parent_path());
 
