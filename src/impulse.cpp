@@ -161,10 +161,10 @@ cv::Mat impulse_to_mask_bgr32(const cv::Mat& refBGR32,
 
 
 struct DualImpulseStats {
-    cv::Mat maskStrict;   // mask0
-    cv::Mat maskLoose;    // mask1
-    std::size_t nImpStrict;
+    cv::Mat maskLoose;   // mask0
+    cv::Mat maskStrict;    // mask1
     std::size_t nImpLoose;
+    std::size_t nImpStrict;
     double ratio;         // (nImpStrict+1)/(nImpLoose+0.1)
 };
 
@@ -174,14 +174,14 @@ static DualImpulseStats compute_dual_impulse_stats_bgr32(
 {
     DualImpulseStats s;
 
-    s.maskStrict = impulse_to_mask_bgr32(refBGR32, distBGR32, false);
-    s.maskLoose  = impulse_to_mask_bgr32(refBGR32, distBGR32, true);
+    s.maskLoose = impulse_to_mask_bgr32(refBGR32, distBGR32, false);
+    s.maskStrict  = impulse_to_mask_bgr32(refBGR32, distBGR32, true);
 
-    s.nImpStrict = count_impulses(s.maskStrict);
-    s.nImpLoose  = count_impulses(s.maskLoose);
+    s.nImpLoose = count_impulses(s.maskLoose);
+    s.nImpStrict  = count_impulses(s.maskStrict);
 
-    s.ratio = (static_cast<double>(s.nImpStrict) + 0.1) /
-              (static_cast<double>(s.nImpLoose)  + 0.1);
+    s.ratio = (static_cast<double>(s.nImpLoose) + 0.1) /
+              (static_cast<double>(s.nImpStrict)  + 0.1);
 
     return s;
 }
@@ -204,8 +204,8 @@ cv::Mat impulse_to_mask_bgr8(const cv::Mat& refBGR, const cv::Mat& distBGR,
         cv::Mat zeroMask(distBGR32.size(), CV_8U, cv::Scalar(0));
         return zeroMask;
     } else {
-        nImp = s.nImpStrict;
-        return s.maskStrict;
+        nImp = s.nImpLoose;
+        return s.maskLoose;
     }
 }
 
@@ -259,7 +259,7 @@ ImpulseStats clean_impulse_bgr32(const cv::Mat& refBGR32,
         stats.count = 0;
         return stats;
     } else {
-        return clean_with_mask(distBGR32, s.maskStrict, cleanedBGR32);
+        return clean_with_mask(distBGR32, s.maskLoose, cleanedBGR32);
     }
 }
 
