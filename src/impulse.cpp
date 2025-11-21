@@ -3,8 +3,16 @@
 #include <iostream>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include "iqalab/utils/mask_utils.hpp"
 
 namespace iqa {
+
+
+std::size_t count_impulses(const cv::Mat& impulseMask)
+{
+    return iqa::count_nonzero_threshold(impulseMask, 0);
+}
+
 
 // Scan a single Lab row (3 channels) and mark impulsive pixels in rowOut.
 //

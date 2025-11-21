@@ -12,6 +12,7 @@ set(IQALAB_SOURCES
         utils/path_utils.cpp
         ../include/iqalab/utils/file_grouping.hpp
         utils/file_grouping.cpp
+        ../include/iqalab/utils/mask_utils.hpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})

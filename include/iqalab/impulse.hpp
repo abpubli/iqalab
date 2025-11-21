@@ -11,6 +11,7 @@ struct ImpulseStats {
     long count = 0;
 };
 
+std::size_t count_impulses(const cv::Mat& impulseMask);
 
 cv::Mat impulse_to_mask(const cv::Mat& refLab32,
                                  const cv::Mat& distLab32);

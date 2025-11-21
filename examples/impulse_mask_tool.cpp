@@ -87,12 +87,14 @@ static void process_single_file(const CliOptions& opts)
     bgr8_to_lab32(distBGR, distLab32);
 
     cv::Mat mask = impulse_to_mask(refLab32, distLab32); // CV_8U, 0/255
+    std::size_t nImp = count_impulses(mask);
 
     fs::create_directories(outPath.parent_path());
     if (!cv::imwrite(outPath.string(), mask)) {
         std::cerr << "Failed to write mask: " << outPath << "\n";
     } else {
-        std::cout << "Wrote impulse mask: " << outPath << "\n";
+        std::cout << "Wrote impulse mask: " << outPath
+                    << " -> impulses=" << nImp << "\n";
     }
 }
 
@@ -169,7 +171,8 @@ static void process_directory_mode(const CliOptions& opts)
             bgr8_to_lab32(distBGR, distLab32);
 
             cv::Mat mask = impulse_to_mask(refLab32, distLab32);
-
+            // count impulses
+            std::size_t nImp = count_impulses(mask);
             fs::path outMaskPath = make_mask_output_path(outDir, distPath);
             fs::create_directories(outMaskPath.parent_path());
 
@@ -177,7 +180,8 @@ static void process_directory_mode(const CliOptions& opts)
                 std::cerr << "  Failed to write mask: " << outMaskPath << "\n";
             } else {
                 std::cout << "  " << distPath.filename()
-                          << " -> " << outMaskPath.filename() << "\n";
+                          << " -> " << outMaskPath.filename()
+                          << " -> impulses=" << nImp << "\n";
             }
         }
     }
