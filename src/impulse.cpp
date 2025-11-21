@@ -252,9 +252,6 @@ ImpulseStats clean_impulse_bgr32(const cv::Mat& refBGR32,
 
     cleanedBGR32.create(distBGR32.size(), distBGR32.type());
 
-    // zachowujesz dotychczasowe logowanie (np. z '|')
-    std::cout << s.ratio << "|";
-
     if (s.ratio > 7.0) {
         cleanedBGR32 = distBGR32.clone();
         ImpulseStats stats;

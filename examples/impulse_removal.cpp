@@ -231,7 +231,11 @@ int main(int argc, char** argv)
         process_single_pair_file(opts.ref, opts.dist, opts.out, opts);
     } else if (refIsDir && distIsDir) {
         // directory mode: ref-dir, dist-dir, out-dir
+        auto start = std::chrono::high_resolution_clock::now();
         process_directory_mode(opts);
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto duration = duration_cast<std::chrono::milliseconds>(stop - start);
+        std::cout << "Duration: " << duration.count()/1e3 << " s.\n";
     } else {
         std::cerr << "ERROR: either all three paths must be files (ref, dist, out_file),\n"
                   << "or ref/dist must be directories and out must be a directory.\n";
