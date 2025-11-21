@@ -13,12 +13,8 @@ struct ImpulseStats {
 
 std::size_t count_impulses(const cv::Mat& impulseMask);
 
-cv::Mat impulse_to_mask(const cv::Mat& refLab32,
-                                 const cv::Mat& distLab32);
-
-ImpulseStats clean_impulse_lab(const cv::Mat& refLab32,
-                               const cv::Mat& distLab32,
-                               cv::Mat& cleanedLab32);
+cv::Mat impulse_to_mask_bgr8(const cv::Mat& refBGR,
+                                 const cv::Mat& distBGR);
 
 /// Convenience wrapper for 8-bit BGR images.
 ///

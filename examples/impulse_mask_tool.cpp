@@ -52,13 +52,6 @@ static fs::path make_mask_output_path(const fs::path& outDir,
     return outDir / outName;
 }
 
-static void bgr8_to_lab32(const cv::Mat& bgr8, cv::Mat& lab32)
-{
-    cv::Mat bgr32;
-    bgr8.convertTo(bgr32, CV_32FC3, 1.0 / 255.0);
-    cv::cvtColor(bgr32, lab32, cv::COLOR_BGR2Lab);
-}
-
 // Single (ref, dist, out_mask) mode.
 static void process_single_file(const CliOptions& opts)
 {
@@ -82,11 +75,7 @@ static void process_single_file(const CliOptions& opts)
         return;
     }
 
-    cv::Mat refLab32, distLab32;
-    bgr8_to_lab32(refBGR,  refLab32);
-    bgr8_to_lab32(distBGR, distLab32);
-
-    cv::Mat mask = impulse_to_mask(refLab32, distLab32); // CV_8U, 0/255
+    cv::Mat mask = impulse_to_mask_bgr8(refBGR, distBGR); // CV_8U, 0/255
     std::size_t nImp = count_impulses(mask);
 
     auto parentPath = outPath.parent_path();
@@ -154,9 +143,6 @@ static void process_directory_mode(const CliOptions& opts)
             continue;
         }
 
-        cv::Mat refLab32;
-        bgr8_to_lab32(refBGR, refLab32);
-
         for (const auto& distPath : distForThisRef) {
             cv::Mat distBGR = cv::imread(distPath.string(), cv::IMREAD_COLOR);
             if (distBGR.empty()) {
@@ -169,10 +155,7 @@ static void process_directory_mode(const CliOptions& opts)
                 continue;
             }
 
-            cv::Mat distLab32;
-            bgr8_to_lab32(distBGR, distLab32);
-
-            cv::Mat mask = impulse_to_mask(refLab32, distLab32);
+            cv::Mat mask = impulse_to_mask_bgr8(refBGR, distBGR);
             // count impulses
             std::size_t nImp = count_impulses(mask);
             fs::path outMaskPath = make_mask_output_path(outDir, distPath);

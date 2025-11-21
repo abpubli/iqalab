@@ -2,7 +2,6 @@
 #include <cassert>
 #include <iostream>
 #include <opencv2/imgcodecs.hpp>
-#include <opencv2/imgproc.hpp>
 #include "iqalab/utils/mask_utils.hpp"
 
 namespace iqa {
@@ -14,11 +13,11 @@ std::size_t count_impulses(const cv::Mat& impulseMask)
 }
 
 
-// Scan a single Lab row (3 channels) and mark impulsive pixels in rowOut.
+// Scan a single row (3 channels) and mark impulsive pixels in rowOut.
 //
 // cols     – number of pixels in the row
-// rowRef   – pointer to CV_32FC3 reference row (Lab)
-// rowDist  – pointer to CV_32FC3 distorted row (Lab)
+// rowRef   – pointer to CV_32FC3 reference row
+// rowDist  – pointer to CV_32FC3 distorted row
 // rowOut   – pointer to CV_8U mask row; pixels set to 255 are treated as impulses.
 //
 // Heuristic:
@@ -58,9 +57,9 @@ static void detect_impulses_row_to_mask(int cols, const cv::Vec3f *rowRef, const
 // Replace impulsive pixels in a single row using 1D interpolation.
 //
 // cols      – number of pixels in the row
-// rowDist   – distorted input row (Lab, CV_32FC3)
+// rowDist   – distorted input row
 // rowMask   – impulse mask row (CV_8U, 0 or non-zero)
-// rowOut    – output row (Lab, CV_32FC3)
+// rowOut    – output row
 //
 // Strategy:
 //  - For pixels where mask == 0, we copy rowDist to rowOut.
@@ -104,52 +103,66 @@ static int clean_impulse_row(int cols, const cv::Vec3f *rowDist, const uchar* ro
 }
 
 // Detect impulsive artifacts over the entire image.
-// For each row, the row-wise detector marks isolated Lab outliers (255)
+// For each row, the row-wise detector marks isolated outliers (255)
 // while non-impulse pixels remain 0.
-cv::Mat impulse_to_mask(const cv::Mat& refLab32,
-                                 const cv::Mat& distLab32)
+cv::Mat impulse_to_mask_bgr32(const cv::Mat& refBGR32,
+                                 const cv::Mat& distBGR32)
 {
-    assert(refLab32.size() == distLab32.size());
-    assert(refLab32.type() == CV_32FC3);
-    assert(distLab32.type() == CV_32FC3);
+    assert(refBGR32.size() == distBGR32.size());
+    assert(refBGR32.type() == CV_32FC3);
+    assert(distBGR32.type() == CV_32FC3);
 
-    cv::Mat impulseMask(distLab32.size(), CV_8U, cv::Scalar(0));
+    cv::Mat impulseMask(distBGR32.size(), CV_8U, cv::Scalar(0));
 
-    const int rows = distLab32.rows;
-    const int cols = distLab32.cols;
+    const int rows = distBGR32.rows;
+    const int cols = distBGR32.cols;
 
     for (int y = 0; y < rows; ++y) {
-        const auto* rowRef  = refLab32.ptr<cv::Vec3f>(y);
-        const auto* rowDist = distLab32.ptr<cv::Vec3f>(y);
+        const auto* rowRef  = refBGR32.ptr<cv::Vec3f>(y);
+        const auto* rowDist = distBGR32.ptr<cv::Vec3f>(y);
         auto*       rowOut  = impulseMask.ptr<uchar>(y);
         detect_impulses_row_to_mask(cols, rowRef, rowDist, rowOut);
     }
     return impulseMask;
 }
 
-/// Clean impulses in Lab space using a precomputed mask.
+cv::Mat impulse_to_mask_bgr8(const cv::Mat& refBGR,
+                                 const cv::Mat& distBGR)
+{
+    assert(refBGR.size() == distBGR.size());
+    assert(refBGR.type() == CV_8UC3);
+    assert(distBGR.type() == CV_8UC3);
+
+    cv::Mat refBGR32, distBGR32;
+    refBGR.convertTo(refBGR32, CV_32FC3);
+    distBGR.convertTo(distBGR32, CV_32FC3);
+
+    return impulse_to_mask_bgr32(refBGR32, distBGR32);
+}
+
+/// Clean impulses using a precomputed mask.
 ///
-/// distLab32   – CV_32FC3 distorted image in CIE Lab
+/// distBGR32   – CV_32FC3 distorted image
 /// impulseMask – CV_8U, same size, 0/255 mask from compute_impulse_mask()
-/// cleanedLab32 – CV_32FC3, output (allocated/created inside)
+/// cleanedBGR32 – CV_32FC3, output (allocated/created inside)
 ///
 /// The algorithm preserves all pixels where the mask is 0 and replaces
 /// masked pixels with values interpolated from neighbouring non-impulse
 /// samples along each scan line.
-ImpulseStats clean_with_mask(const cv::Mat& distLab32,
+ImpulseStats clean_with_mask(const cv::Mat& distBGR32,
                         const cv::Mat& impulseMask,
-                        cv::Mat& cleanedLab32)
+                        cv::Mat& cleanedBGR32)
 {
-    CV_Assert(distLab32.size() == impulseMask.size());
-    CV_Assert(distLab32.type() == CV_32FC3);
+    CV_Assert(distBGR32.size() == impulseMask.size());
+    CV_Assert(distBGR32.type() == CV_32FC3);
     CV_Assert(impulseMask.type() == CV_8U);
     long totalImpulses = 0;
-    const int rows = distLab32.rows;
-    const int cols = distLab32.cols;
+    const int rows = distBGR32.rows;
+    const int cols = distBGR32.cols;
     for (int y = 0; y < rows; ++y) {
-        const auto* rowDist = distLab32.ptr<cv::Vec3f>(y);
+        const auto* rowDist = distBGR32.ptr<cv::Vec3f>(y);
         const auto*       rowMask  = impulseMask.ptr<uchar>(y);
-        auto*             rowOut  = cleanedLab32.ptr<cv::Vec3f>(y);
+        auto*             rowOut  = cleanedBGR32.ptr<cv::Vec3f>(y);
         totalImpulses += clean_impulse_row(cols, rowDist, rowMask, rowOut);
     }
     ImpulseStats stats;
@@ -157,22 +170,22 @@ ImpulseStats clean_with_mask(const cv::Mat& distLab32,
     return stats;
 }
 
-// Full Lab pipeline: detection + cleaning.
+// Full pipeline: detection + cleaning.
 //
 // 1) compute_impulse_mask(ref, dist) to detect impulsive pixels;
 // 2) clean_with_mask(dist, mask, cleaned) to inpaint those pixels.
 //
 // The returned ImpulseStats::count is the total number of pixels modified.
-ImpulseStats clean_impulse_lab(const cv::Mat& refLab32,
-                                 const cv::Mat& distLab32,
-                                 cv::Mat& cleanedLab32) {
-    cv::Mat impulseMask = impulse_to_mask(refLab32,distLab32);
-    cleanedLab32.create(distLab32.size(), distLab32.type());
-    return clean_with_mask(distLab32, impulseMask, cleanedLab32);
+ImpulseStats clean_impulse_bgr32(const cv::Mat& refBGR32,
+                                 const cv::Mat& distBGR32,
+                                 cv::Mat& cleanedBGR32) {
+    cv::Mat impulseMask = impulse_to_mask_bgr32(refBGR32,distBGR32);
+    cleanedBGR32.create(distBGR32.size(), distBGR32.type());
+    return clean_with_mask(distBGR32, impulseMask, cleanedBGR32);
 }
 
 
-// Public BGR8 wrapper: convert to Lab32F, run clean_impulse_lab,
+// Public BGR8 wrapper: convert to BGR32F, run clean_impulse_bgr32,
 // then convert back to BGR8.
 ImpulseStats clean_impulse_image(const cv::Mat& refBGR,
                                  const cv::Mat& distBGR,
@@ -182,23 +195,13 @@ ImpulseStats clean_impulse_image(const cv::Mat& refBGR,
     assert(refBGR.type() == CV_8UC3);
     assert(distBGR.type() == CV_8UC3);
 
-    // Konwersja do 32F BGR [0,1]
     cv::Mat refBGR32, distBGR32;
-    refBGR.convertTo(refBGR32, CV_32FC3, 1.0 / 255.0);
-    distBGR.convertTo(distBGR32, CV_32FC3, 1.0 / 255.0);
+    refBGR.convertTo(refBGR32, CV_32FC3);
+    distBGR.convertTo(distBGR32, CV_32FC3);
 
-    // Do Lab (32F)
-    cv::Mat refLab32, distLab32;
-    cv::cvtColor(refBGR32,  refLab32,  cv::COLOR_BGR2Lab);
-    cv::cvtColor(distBGR32, distLab32, cv::COLOR_BGR2Lab);
-
-    // Czyszczenie impulsów w przestrzeni Lab
-    cv::Mat cleanedLab32;
-    ImpulseStats stats = clean_impulse_lab(refLab32, distLab32, cleanedLab32);
-    // Powrót do BGR8
-    cv::Mat cleanBGR32;
-    cv::cvtColor(cleanedLab32, cleanBGR32, cv::COLOR_Lab2BGR);
-    cleanBGR32.convertTo(outBGR, CV_8UC3, 255.0);
+    cv::Mat cleanedBGR32;
+    ImpulseStats stats = clean_impulse_bgr32(refBGR32, distBGR32, cleanedBGR32);
+    cleanedBGR32.convertTo(outBGR, CV_8UC3);
 
     return stats;
 }
