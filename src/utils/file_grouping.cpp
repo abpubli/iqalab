@@ -11,6 +11,21 @@ namespace fs = std::filesystem;
 namespace iqa {
 namespace utils {
 
+static std::string to_lower_copy(const std::string& s)
+{
+    std::string out = s;
+    std::transform(out.begin(), out.end(), out.begin(),
+                   [](unsigned char c){ return std::tolower(c); });
+    return out;
+}
+
+static bool icase_less(const std::filesystem::path& a,
+                       const std::filesystem::path& b)
+{
+    return to_lower_copy(a.filename().string()) <
+           to_lower_copy(b.filename().string());
+}
+
 std::vector<fs::path>
 collect_reference_files(const fs::path& refDir)
 {
@@ -26,7 +41,7 @@ collect_reference_files(const fs::path& refDir)
         }
     }
 
-    std::sort(refs.begin(), refs.end());
+    std::sort(refs.begin(), refs.end(), icase_less);
     return refs;
 }
 
@@ -45,7 +60,7 @@ collect_distorted_files(const fs::path& distDir)
         }
     }
 
-    std::sort(dists.begin(), dists.end());
+    std::sort(dists.begin(), dists.end(), icase_less);
     return dists;
 }
 
@@ -87,7 +102,7 @@ FileGroups group_distorted_by_reference(
         }
 
         // keep deterministic ordering
-        std::sort(vec.begin(), vec.end());
+        std::sort(vec.begin(), vec.end(), icase_less);
     }
 
     return groups;
