@@ -6,17 +6,14 @@
 #include <opencv2/opencv.hpp>
 
 #include "iqalab/image_type.hpp"          // stem_lower, is_supported_image
+#include "iqalab/iqalab.hpp"
 #include "iqalab/utils/file_grouping.hpp" // collect_reference_files, collect_distorted_files, group_distorted_by_reference
+#include "iqalab/utils/mask_utils.hpp"
 #include "iqalab/utils/path_utils.hpp"    // path_to_utf8, ...
 
 namespace fs = std::filesystem;
 using namespace iqa;
 using namespace iqa::utils;
-
-// Zakładamy, że implementacja jest gdzieś indziej (np. w blocking.cpp / iqalab.hpp).
-namespace iqa {
-    cv::Mat blocking_to_mask(const cv::Mat& refRgb, const cv::Mat& distRgb);
-}
 
 struct Options {
     fs::path refPath;
@@ -117,7 +114,7 @@ static void process_single_file(const Options& opts)
         return;
     }
 
-    cv::Mat mask = blocking_to_mask(refImg, distImg);
+    cv::Mat mask = flat_blocking_to_mask(refImg, distImg);
     if (mask.empty()) {
         std::cerr << "ERROR: blocking_to_mask returned empty mask\n";
         return;
@@ -204,9 +201,14 @@ static void process_directory_mode(const Options& opts)
                 continue;
             }
 
-            cv::Mat mask = blocking_to_mask(refImg, distImg);
+            cv::Mat mask = flat_blocking_to_mask(refImg, distImg);
             if (mask.empty()) {
                 std::cerr << "blocking_to_mask returned empty mask for: " << distPath << "\n";
+                continue;
+            }
+
+            if (count_nonzero_threshold(mask) == 0) {
+                std::cout << "no blocks, skip, for: " << distPath << "\n";
                 continue;
             }
 
@@ -248,8 +250,11 @@ int main(int argc, char** argv)
         // Tryb: pojedyncze pliki (trzeci argument może być jeszcze nieistniejącym plikiem).
         process_single_file(opts);
     } else if (refIsDir && distIsDir) {
-        // Tryb: katalogi (trzeci będzie traktowany jako katalog wyjściowy).
+        auto start = std::chrono::high_resolution_clock::now();
         process_directory_mode(opts);
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto duration = duration_cast<std::chrono::milliseconds>(stop - start);
+        std::cout << "Duration: " << duration.count()/1e3 << " s.\n";
     } else {
         std::cerr << "ERROR: either all three paths must be files (ref, dist, out_image),\n"
                   << "or ref/dist must be directories and out must be a directory.\n";
