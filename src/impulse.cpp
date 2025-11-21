@@ -165,7 +165,7 @@ struct DualImpulseStats {
     cv::Mat maskStrict;    // mask1
     std::size_t nImpLoose;
     std::size_t nImpStrict;
-    double ratio;         // (nImpStrict+1)/(nImpLoose+0.1)
+    double ratio;
 };
 
 static DualImpulseStats compute_dual_impulse_stats_bgr32(

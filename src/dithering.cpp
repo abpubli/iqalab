@@ -1,5 +1,6 @@
 #include "iqalab/dithering.hpp"
 
+#include "iqalab/color.hpp"
 #include "iqalab/impulse.hpp"
 
 #include "iqalab/utils/mask_utils.hpp"
@@ -125,21 +126,21 @@ static int clean_dithering_row(int cols, const cv::Vec3f *rowDist, const uchar* 
 // Detect impulsive artifacts over the entire image.
 // For each row, the row-wise detector marks isolated outliers (255)
 // while non-dithering pixels remain 0.
-cv::Mat dithering_to_mask_bgr32(const cv::Mat& refBGR32,
-                                 const cv::Mat& distBGR32)
+cv::Mat dithering_to_mask_lab(const cv::Mat& refLab,
+                                 const cv::Mat& distLab)
 {
-    assert(refBGR32.size() == distBGR32.size());
-    assert(refBGR32.type() == CV_32FC3);
-    assert(distBGR32.type() == CV_32FC3);
+    assert(refLab.size() == distLab.size());
+    assert(refLab.type() == CV_32FC3);
+    assert(distLab.type() == CV_32FC3);
 
-    cv::Mat ditheringMask(distBGR32.size(), CV_8U, cv::Scalar(0));
+    cv::Mat ditheringMask(distLab.size(), CV_8U, cv::Scalar(0));
 
-    const int rows = distBGR32.rows;
-    const int cols = distBGR32.cols;
+    const int rows = distLab.rows;
+    const int cols = distLab.cols;
 
     for (int y = 0; y < rows; ++y) {
-        const auto* rowRef  = refBGR32.ptr<cv::Vec3f>(y);
-        const auto* rowDist = distBGR32.ptr<cv::Vec3f>(y);
+        const auto* rowRef  = refLab.ptr<cv::Vec3f>(y);
+        const auto* rowDist = distLab.ptr<cv::Vec3f>(y);
         auto*       rowOut  = ditheringMask.ptr<uchar>(y);
         detect_ditherings_row_to_mask(cols, rowRef, rowDist, rowOut);
     }
@@ -152,15 +153,15 @@ struct DualImpulseStats {
     cv::Mat maskStrict;    // mask1
     std::size_t nImpLoose;
     std::size_t nImpStrict;
-    double ratio;         // (nImpStrict+1)/(nImpLoose+0.1)
+    double ratio;
 };
 
-static DualImpulseStats compute_dual_dithering_stats_bgr32(
-    const cv::Mat& refBGR32,
-    const cv::Mat& distBGR32)
+static DualImpulseStats compute_dual_dithering_stats_lab(
+    const cv::Mat& refLab,
+    const cv::Mat& distLAb)
 {
     DualImpulseStats s;
-    s.maskLoose = dithering_to_mask_bgr32(refBGR32, distBGR32);
+    s.maskLoose = dithering_to_mask_lab(refLab, distLAb);
     s.nImpLoose = count_ditherings(s.maskLoose);
     s.ratio = 1;
     return s;
@@ -177,7 +178,7 @@ cv::Mat dithering_to_mask_bgr8(const cv::Mat& refBGR, const cv::Mat& distBGR,
     refBGR.convertTo(refBGR32, CV_32FC3);
     distBGR.convertTo(distBGR32, CV_32FC3);
 
-    DualImpulseStats s = compute_dual_dithering_stats_bgr32(refBGR32, distBGR32);
+    DualImpulseStats s = compute_dual_dithering_stats_lab(refBGR32, distBGR32);
 
     if (s.ratio > 7.0) {
         nImp = 0;
@@ -199,21 +200,21 @@ ImpulseStats clean_with_mask(const cv::Mat& distBGR32,
 // 2) clean_with_mask(dist, mask, cleaned) to inpaint those pixels.
 //
 // The returned ImpulseStats::count is the total number of pixels modified.
-ImpulseStats clean_dithering_bgr32(const cv::Mat& refBGR32,
-                    const cv::Mat& distBGR32,
-                    cv::Mat& cleanedBGR32)
+ImpulseStats clean_dithering_lab(const cv::Mat& refLab,
+                    const cv::Mat& distLab,
+                    cv::Mat& cleanedLab)
 {
-    DualImpulseStats s = compute_dual_dithering_stats_bgr32(refBGR32, distBGR32);
+    DualImpulseStats s = compute_dual_dithering_stats_lab(refLab, distLab);
 
-    cleanedBGR32.create(distBGR32.size(), distBGR32.type());
+    cleanedLab.create(distLab.size(), distLab.type());
 
     if (s.ratio > 7.0) {
-        cleanedBGR32 = distBGR32.clone();
+        cleanedLab = distLab.clone();
         ImpulseStats stats;
         stats.count = 0;
         return stats;
     } else {
-        return clean_with_mask(distBGR32, s.maskLoose, cleanedBGR32);
+        return clean_with_mask(distLab, s.maskLoose, cleanedLab);
     }
 }
 
@@ -227,14 +228,13 @@ ImpulseStats clean_dithering_image(const cv::Mat& refBGR,
     assert(refBGR.type() == CV_8UC3);
     assert(distBGR.type() == CV_8UC3);
 
-    cv::Mat refBGR32, distBGR32;
-    refBGR.convertTo(refBGR32, CV_32FC3);
-    distBGR.convertTo(distBGR32, CV_32FC3);
+    cv::Mat refLab, distLab;
 
-    cv::Mat cleanedBGR32;
-    ImpulseStats stats = clean_dithering_bgr32(refBGR32, distBGR32, cleanedBGR32);
-    cleanedBGR32.convertTo(outBGR, CV_8UC3);
-
+    bgr8_to_lab32f(refBGR, refLab);
+    bgr8_to_lab32f(distBGR,distLab);
+    cv::Mat cleanedLab;
+    ImpulseStats stats = clean_dithering_lab(refLab, distLab, cleanedLab);
+    lab32f_to_bgr8(cleanedLab, outBGR);
     return stats;
 }
 
