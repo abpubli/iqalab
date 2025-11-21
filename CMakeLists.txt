@@ -14,16 +14,15 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# OpenCV – lepiej w tej formie:
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
 
-# Główna biblioteka
+# Main library
 add_subdirectory(src)
 
-# Przykłady
 add_subdirectory(examples)
+add_subdirectory(test)
 
-# Instalacja nagłówków:
+# Header installation
 install(
         DIRECTORY include/iqalab/
         DESTINATION include/iqalab

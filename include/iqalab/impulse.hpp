@@ -8,7 +8,7 @@ namespace iqa {
 struct ImpulseStats {
     /// Total number of pixels that were classified as impulses
     /// (i.e. pixels where the output differs from the distorted input).
-    long count = 0;
+    size_t count = 0;
 };
 
 std::size_t count_impulses(const cv::Mat& impulseMask);

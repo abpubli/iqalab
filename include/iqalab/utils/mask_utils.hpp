@@ -5,23 +5,12 @@ namespace iqa {
 
 /// Counts pixels where mask(x,y) > threshold.
 /// Useful for impulse masks, flat masks, detail masks, etc.
-inline std::size_t count_nonzero_threshold(const cv::Mat& mask,
-                                           uchar threshold = 0)
-{
-  CV_Assert(mask.type() == CV_8U);
+std::size_t count_nonzero_threshold(const cv::Mat& mask,
+                                           uchar threshold = 1);
 
-  std::size_t count = 0;
-  const int rows = mask.rows;
-  const int cols = mask.cols;
-
-  for (int y = 0; y < rows; ++y) {
-    const uchar* row = mask.ptr<uchar>(y);
-    for (int x = 0; x < cols; ++x) {
-      if (row[x] > threshold)
-        ++count;
-    }
-  }
-  return count;
-}
+// Build 8-bit single-channel diff mask:
+// diff(y,x) = max( |B1-B2|, |G1-G2|, |R1-R2| )
+cv::Mat make_channel_max_diff_mask(const cv::Mat& img1_bgr,
+                                   const cv::Mat& img2_bgr);
 
 } // namespace iqa

@@ -32,6 +32,7 @@ std::size_t count_impulses(const cv::Mat& impulseMask)
 static void detect_impulses_row_to_mask(int cols, const cv::Vec3f *rowRef, const cv::Vec3f *rowDist, uchar *rowOut) {
     std::memset(rowOut, 0, static_cast<std::size_t>(cols));
     for (int channel = 0; channel < 3; channel++) {
+        std::deque<float> min_max_buf;
         double sum_diffs = 0;
         double sum_dx = 0;
         for (int bx = 0; bx < cols; bx++) {
@@ -42,11 +43,16 @@ static void detect_impulses_row_to_mask(int cols, const cv::Vec3f *rowRef, const
             sum_dx+=std::fabs(dx);
         }
         for (int bx = 0; bx < cols-1; bx++) {
+            min_max_buf.push_back(rowDist[bx][channel]);
+            float mn = *std::min_element(min_max_buf.begin(), min_max_buf.end());
+            float mx = *std::max_element(min_max_buf.begin(), min_max_buf.end());
+            if (min_max_buf.size() > 8) min_max_buf.pop_front();
             double dxRef = fabs(rowRef[bx+1][channel]-rowRef[bx][channel]);
             double dxDist  = fabs(rowDist[bx+1][channel]-rowDist[bx][channel]);
-            float difference = rowRef[bx][channel] - rowDist[bx][channel];
-            bool guess_impulse = dxDist>=2*dxRef &&
-                abs(difference)>=2*sum_diffs/cols && dxDist>2*sum_dx/(cols-1);
+            float difference = rowDist[bx][channel] - rowRef[bx][channel];
+            bool guess_impulse = (rowDist[bx][channel]>=100|| rowDist[bx][channel]<=26)&&(rowDist[bx][channel] == mx || rowDist[bx][channel] == mn)
+                && abs(difference)>=40 && dxDist>=2*dxRef
+                    && dxDist>5*sum_dx/(cols-1);
             if (guess_impulse) {
                 rowOut[bx]=255;
             }
@@ -156,7 +162,7 @@ ImpulseStats clean_with_mask(const cv::Mat& distBGR32,
     CV_Assert(distBGR32.size() == impulseMask.size());
     CV_Assert(distBGR32.type() == CV_32FC3);
     CV_Assert(impulseMask.type() == CV_8U);
-    long totalImpulses = 0;
+    size_t totalImpulses = 0;
     const int rows = distBGR32.rows;
     const int cols = distBGR32.cols;
     for (int y = 0; y < rows; ++y) {
