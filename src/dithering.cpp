@@ -32,7 +32,7 @@ std::size_t count_ditherings(const cv::Mat& ditheringMask)
 //    its absolute difference to the reference is much larger than the mean
 //    difference along the row.
 //  - if any channel marks a pixel as dithering, the final mask at that column is 255.
-static void detect_ditherings_row_to_mask(int cols, const cv::Vec3f *rowRef, const cv::Vec3f *rowDist, uchar *rowOut, bool strict) {
+static void detect_ditherings_row_to_mask(int cols, const cv::Vec3f *rowRef, const cv::Vec3f *rowDist, uchar *rowOut) {
     std::memset(rowOut, 0, static_cast<std::size_t>(cols));
     for (int channel = 0; channel < 3; channel++) {
         double sum_diffs = 0;
@@ -40,14 +40,6 @@ static void detect_ditherings_row_to_mask(int cols, const cv::Vec3f *rowRef, con
             sum_diffs+=fabs(rowRef[bx][channel]- rowDist[bx][channel]);
         }
         double avgDx = 0;
-        if (strict) {
-            double sum_dx = 0;
-            for (int bx = 0; bx < cols-1; bx++) {
-                float dx = rowDist[bx+1][channel]-rowDist[bx][channel];
-                sum_dx+=std::fabs(dx);
-            }
-            avgDx = sum_dx/(cols-1);
-        }
         std::deque<float> min_max_buf;
         double sum_value_acc = 0;
         double sum_dx_acc = 0;
@@ -66,23 +58,15 @@ static void detect_ditherings_row_to_mask(int cols, const cv::Vec3f *rowRef, con
             float difference = rowDist[bx][channel] - rowRef[bx][channel];
             double mean_diff = avg_win_val - rowRef[bx][channel];
             bool guess_dithering;
-            if (strict) {
-                bool b0 = rowDist[bx][channel]>=100|| rowDist[bx][channel]<=26;
-                bool b1 = (rowDist[bx][channel] == mx || rowDist[bx][channel] == mn);
-                bool b2 = abs(difference)>=40;
-                bool b3 = dxDist>=2*dxRef;
-                bool b4 = dxDist>4*avgDx;
-                bool b5 = abs(difference)>=std::max(abs(mean_diff),15.);
-                guess_dithering = b0 && b1 && b2 && b3 && b4 && b5;
-            } else {
-                sum_dx_acc += dxDist;
-                if (bx >= 8) sum_dx_acc -= fabs(rowDist[bx-7][channel] - rowDist[bx-8][channel]);
-                double avg_win_dx = sum_dx_acc/std::min(8, bx+1);
 
-                bool b6 = abs(difference)>=std::max(abs(mean_diff),15.);
-                bool b7 = dxDist >= avg_win_dx;
-                guess_dithering = b6 && b7;
-            }
+            sum_dx_acc += dxDist;
+            if (bx >= 8) sum_dx_acc -= fabs(rowDist[bx-7][channel] - rowDist[bx-8][channel]);
+            double avg_win_dx = sum_dx_acc/std::min(8, bx+1);
+
+            bool b6 = abs(difference)>=std::max(abs(mean_diff),15.);
+            bool b7 = dxDist >= avg_win_dx;
+            guess_dithering = b6 && b7;
+
             if (guess_dithering) {
                 rowOut[bx]= 255;
             }
@@ -142,7 +126,7 @@ static int clean_dithering_row(int cols, const cv::Vec3f *rowDist, const uchar* 
 // For each row, the row-wise detector marks isolated outliers (255)
 // while non-dithering pixels remain 0.
 cv::Mat dithering_to_mask_bgr32(const cv::Mat& refBGR32,
-                                 const cv::Mat& distBGR32, bool strict)
+                                 const cv::Mat& distBGR32)
 {
     assert(refBGR32.size() == distBGR32.size());
     assert(refBGR32.type() == CV_32FC3);
@@ -157,7 +141,7 @@ cv::Mat dithering_to_mask_bgr32(const cv::Mat& refBGR32,
         const auto* rowRef  = refBGR32.ptr<cv::Vec3f>(y);
         const auto* rowDist = distBGR32.ptr<cv::Vec3f>(y);
         auto*       rowOut  = ditheringMask.ptr<uchar>(y);
-        detect_ditherings_row_to_mask(cols, rowRef, rowDist, rowOut, strict);
+        detect_ditherings_row_to_mask(cols, rowRef, rowDist, rowOut);
     }
     return ditheringMask;
 }
@@ -176,16 +160,9 @@ static DualImpulseStats compute_dual_dithering_stats_bgr32(
     const cv::Mat& distBGR32)
 {
     DualImpulseStats s;
-
-    s.maskStrict = dithering_to_mask_bgr32(refBGR32, distBGR32, false);
-    s.maskLoose  = dithering_to_mask_bgr32(refBGR32, distBGR32, true);
-
+    s.maskStrict = dithering_to_mask_bgr32(refBGR32, distBGR32);
     s.nImpStrict = count_ditherings(s.maskStrict);
-    s.nImpLoose  = count_ditherings(s.maskLoose);
-
-    s.ratio = (static_cast<double>(s.nImpStrict) + 0.1) /
-              (static_cast<double>(s.nImpLoose)  + 0.1);
-
+    s.ratio = 1;
     return s;
 }
 

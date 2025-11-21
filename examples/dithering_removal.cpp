@@ -53,6 +53,19 @@ bool parse_args(int argc, char** argv, CliOptions& opts)
     return true;
 }
 
+static bool copy_or_fail(const fs::path& src, const fs::path& dst)
+{
+    std::error_code ec;
+    fs::copy_file(src, dst, fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        std::cerr << "ERROR: cannot copy \"" << src.string()
+                  << "\" to \"" << dst.string()
+                  << "\": " << ec.message() << "\n";
+        return false;
+    }
+    return true;
+}
+
 fs::path make_output_path_for_dist(const fs::path& outDir,
                                    const fs::path& distFile,
                                    const std::string& suffix = "_ditherings")
@@ -113,6 +126,8 @@ void process_single_pair_file(const fs::path& refPath,
     } else {
         std::cout << "  -> saved: " << outPath << "\n";
     }
+    auto outPathCopy = make_output_path_for_dist(opts.out, distPath, "");
+    copy_or_fail(distPath, outPathCopy);
 }
 
 void process_directory_mode(const CliOptions& opts)
@@ -199,6 +214,8 @@ void process_directory_mode(const CliOptions& opts)
                 if (!cv::imwrite(outPath.string(), cleaned)) {
                     std::cerr << "Failed to write: " << outPath << "\n";
                 }
+                auto outPathCopy = make_output_path_for_dist(opts.out, distPath, "");
+                copy_or_fail(distPath, outPathCopy);
             }
 
             std::cout << "  " << distPath.filename()
