@@ -158,8 +158,35 @@ cv::Mat impulse_to_mask_bgr32(const cv::Mat& refBGR32,
     return impulseMask;
 }
 
+
+struct DualImpulseStats {
+    cv::Mat maskStrict;   // mask0
+    cv::Mat maskLoose;    // mask1
+    std::size_t nImpStrict;
+    std::size_t nImpLoose;
+    double ratio;         // (nImpStrict+1)/(nImpLoose+0.1)
+};
+
+static DualImpulseStats compute_dual_impulse_stats_bgr32(
+    const cv::Mat& refBGR32,
+    const cv::Mat& distBGR32)
+{
+    DualImpulseStats s;
+
+    s.maskStrict = impulse_to_mask_bgr32(refBGR32, distBGR32, false);
+    s.maskLoose  = impulse_to_mask_bgr32(refBGR32, distBGR32, true);
+
+    s.nImpStrict = count_impulses(s.maskStrict);
+    s.nImpLoose  = count_impulses(s.maskLoose);
+
+    s.ratio = (static_cast<double>(s.nImpStrict) + 0.1) /
+              (static_cast<double>(s.nImpLoose)  + 0.1);
+
+    return s;
+}
+
 cv::Mat impulse_to_mask_bgr8(const cv::Mat& refBGR, const cv::Mat& distBGR,
-                        std::size_t& nImp)
+                     std::size_t& nImp)
 {
     assert(refBGR.size() == distBGR.size());
     assert(refBGR.type() == CV_8UC3);
@@ -168,19 +195,16 @@ cv::Mat impulse_to_mask_bgr8(const cv::Mat& refBGR, const cv::Mat& distBGR,
     cv::Mat refBGR32, distBGR32;
     refBGR.convertTo(refBGR32, CV_32FC3);
     distBGR.convertTo(distBGR32, CV_32FC3);
-    cv::Mat mask0 = impulse_to_mask_bgr32(refBGR32, distBGR32, false);
-    cv::Mat mask1 = impulse_to_mask_bgr32(refBGR32, distBGR32, true);
-    std::size_t nImp0 = count_impulses(mask0);
-    std::size_t nImp1 = count_impulses(mask1);
-    std::cout << (double)(nImp0+0.1)/(nImp1+0.1) << std::endl;
-    if ((double)(nImp0+1)/(nImp1+0.1) >7) {
+
+    DualImpulseStats s = compute_dual_impulse_stats_bgr32(refBGR32, distBGR32);
+
+    if (s.ratio > 7.0) {
         nImp = 0;
         cv::Mat zeroMask(distBGR32.size(), CV_8U, cv::Scalar(0));
         return zeroMask;
-    }
-    else {
-        nImp = nImp0;
-        return mask0;
+    } else {
+        nImp = s.nImpStrict;
+        return s.maskStrict;
     }
 }
 
@@ -221,22 +245,24 @@ ImpulseStats clean_with_mask(const cv::Mat& distBGR32,
 //
 // The returned ImpulseStats::count is the total number of pixels modified.
 ImpulseStats clean_impulse_bgr32(const cv::Mat& refBGR32,
-                                 const cv::Mat& distBGR32,
-                                 cv::Mat& cleanedBGR32) {
-    cv::Mat mask0 = impulse_to_mask_bgr32(refBGR32, distBGR32, false);
-    cv::Mat mask1 = impulse_to_mask_bgr32(refBGR32, distBGR32, true);
-    std::size_t nImp0 = count_impulses(mask0);
-    std::size_t nImp1 = count_impulses(mask1);
+                    const cv::Mat& distBGR32,
+                    cv::Mat& cleanedBGR32)
+{
+    DualImpulseStats s = compute_dual_impulse_stats_bgr32(refBGR32, distBGR32);
+
     cleanedBGR32.create(distBGR32.size(), distBGR32.type());
-    std::cout << (double)(nImp0+1)/(nImp1+0.1) <<"|";
-    if ((double)(nImp0+1)/(nImp1+0.1) >7) {
+
+    // zachowujesz dotychczasowe logowanie (np. z '|')
+    std::cout << s.ratio << "|";
+
+    if (s.ratio > 7.0) {
         cleanedBGR32 = distBGR32.clone();
         ImpulseStats stats;
         stats.count = 0;
         return stats;
+    } else {
+        return clean_with_mask(distBGR32, s.maskStrict, cleanedBGR32);
     }
-    else
-        return clean_with_mask(distBGR32, mask0, cleanedBGR32);
 }
 
 // Public BGR8 wrapper: convert to BGR32F, run clean_impulse_bgr32,
