@@ -89,7 +89,9 @@ static void process_single_file(const CliOptions& opts)
     cv::Mat mask = impulse_to_mask(refLab32, distLab32); // CV_8U, 0/255
     std::size_t nImp = count_impulses(mask);
 
-    fs::create_directories(outPath.parent_path());
+    auto parentPath = outPath.parent_path();
+    if (!parentPath.empty())
+        fs::create_directories(outPath.parent_path());
     if (!cv::imwrite(outPath.string(), mask)) {
         std::cerr << "Failed to write mask: " << outPath << "\n";
     } else {

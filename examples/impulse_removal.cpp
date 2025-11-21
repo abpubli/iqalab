@@ -104,7 +104,9 @@ void process_single_pair_file(const fs::path& refPath,
         return;
     }
 
-    fs::create_directories(outPath.parent_path());
+    auto parentPath = outPath.parent_path();
+    if (!parentPath.empty())
+        fs::create_directories(outPath.parent_path());
     if (!cv::imwrite(outPath.string(), cleaned)) {
         std::cerr << "  -> failed to write: " << outPath << "\n";
     } else {
