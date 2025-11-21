@@ -18,3 +18,6 @@ target_link_libraries(impulse_mask_tool PRIVATE iqalab)
 
 add_executable(blocking_mask_tool blocking_mask_tool.cpp)
 target_link_libraries(blocking_mask_tool PRIVATE iqalab)
+
+add_executable(mse_info mse_info.cpp)
+target_link_libraries(mse_info PRIVATE iqalab)

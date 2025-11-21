@@ -16,6 +16,8 @@ set(IQALAB_SOURCES
         flat_blocking.cpp
         dithering.cpp
         color.cpp
+        ../include/iqalab/mse.hpp
+        mse.cpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})
