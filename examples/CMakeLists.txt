@@ -10,6 +10,9 @@ target_link_libraries(lab_shift_demo PRIVATE iqalab)
 add_executable(impulse_removal impulse_removal.cpp)
 target_link_libraries(impulse_removal PRIVATE iqalab)
 
+add_executable(dithering_removal dithering_removal.cpp)
+target_link_libraries(dithering_removal PRIVATE iqalab)
+
 add_executable(impulse_mask_tool impulse_mask_tool.cpp)
 target_link_libraries(impulse_mask_tool PRIVATE iqalab)
 

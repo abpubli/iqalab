@@ -14,6 +14,7 @@ set(IQALAB_SOURCES
         utils/file_grouping.cpp
         utils/mask_utils.cpp
         flat_blocking.cpp
+        dithering.cpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})
