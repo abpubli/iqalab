@@ -7,5 +7,8 @@ target_link_libraries(regions_demo PRIVATE iqalab)
 add_executable(lab_shift_demo lab_shift_demo.cpp)
 target_link_libraries(lab_shift_demo PRIVATE iqalab)
 
-add_executable(impulse_removal_demo impulse_removal.cpp)
-target_link_libraries(impulse_removal_demo PRIVATE iqalab)
+add_executable(impulse_removal impulse_removal.cpp)
+target_link_libraries(impulse_removal PRIVATE iqalab)
+
+add_executable(impulse_mask_tool impulse_mask_tool.cpp)
+target_link_libraries(impulse_mask_tool PRIVATE iqalab)
