@@ -50,9 +50,14 @@ static void detect_impulses_row_to_mask(int cols, const cv::Vec3f *rowRef, const
             double dxRef = fabs(rowRef[bx+1][channel]-rowRef[bx][channel]);
             double dxDist  = fabs(rowDist[bx+1][channel]-rowDist[bx][channel]);
             float difference = rowDist[bx][channel] - rowRef[bx][channel];
-            bool guess_impulse = (rowDist[bx][channel]>=100|| rowDist[bx][channel]<=26)&&(rowDist[bx][channel] == mx || rowDist[bx][channel] == mn)
-                && abs(difference)>=40 && dxDist>=2*dxRef
-                    && dxDist>5*sum_dx/(cols-1);
+            bool b0 = rowDist[bx][channel]>=100|| rowDist[bx][channel]<=26;
+            bool b1 = (rowDist[bx][channel] == mx || rowDist[bx][channel] == mn);
+            bool b2 = abs(difference)>=40;
+            bool b3 = dxDist>=2*dxRef;
+            bool b4 = dxDist>5*sum_dx/(cols-1);
+            bool guess_impulse = b0 && b1
+                && b2 && b3
+                    && b4;
             if (guess_impulse) {
                 rowOut[bx]=255;
             }
