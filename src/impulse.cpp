@@ -33,13 +33,17 @@ static void detect_impulses_row_to_mask(int cols, const cv::Vec3f *rowRef, const
     std::memset(rowOut, 0, static_cast<std::size_t>(cols));
     for (int channel = 0; channel < 3; channel++) {
         double sum_diffs = 0;
-        double sum_dx = 0;
         for (int bx = 0; bx < cols; bx++) {
             sum_diffs+=fabs(rowRef[bx][channel]- rowDist[bx][channel]);
         }
-        for (int bx = 0; bx < cols-1; bx++) {
-            float dx = rowDist[bx+1][channel]-rowDist[bx][channel];
-            sum_dx+=std::fabs(dx);
+        double avgDx = 0;
+        if (strict) {
+            double sum_dx = 0;
+            for (int bx = 0; bx < cols-1; bx++) {
+                float dx = rowDist[bx+1][channel]-rowDist[bx][channel];
+                sum_dx+=std::fabs(dx);
+            }
+            avgDx = sum_dx/(cols-1);
         }
         std::deque<float> min_max_buf;
         double sum_value_acc = 0;
@@ -56,27 +60,26 @@ static void detect_impulses_row_to_mask(int cols, const cv::Vec3f *rowRef, const
             double dxRef = fabs(rowRef[bx+1][channel]-rowRef[bx][channel]);
             double dxDist  = fabs(rowDist[bx+1][channel]-rowDist[bx][channel]);
 
-            sum_dx_acc += dxDist;
-            if (bx >= 8) sum_dx_acc -= fabs(rowDist[bx-7][channel] - rowDist[bx-8][channel]);
-            double avg_win_dx = sum_dx_acc/std::min(8, bx+1);
-
             float difference = rowDist[bx][channel] - rowRef[bx][channel];
-            double avgDx = sum_dx/(cols-1);
             double mean_diff = avg_win_val - rowRef[bx][channel];
-            //strict
-            bool b0 = rowDist[bx][channel]>=100|| rowDist[bx][channel]<=26;
-            bool b1 = (rowDist[bx][channel] == mx || rowDist[bx][channel] == mn);
-            bool b2 = abs(difference)>=40;
-            bool b3 = dxDist>=2*dxRef;
-            bool b4 = dxDist>4*avgDx;
-            bool b5 = abs(difference)>=std::max(abs(mean_diff),15.);
-            //loose
-            bool b6 = abs(difference)>=std::max(abs(mean_diff),15.);
-            bool b7 = dxDist >= avg_win_dx;
-            bool guess_impulse_loose = b6 && b7;
+            bool guess_impulse;
+            if (strict) {
+                bool b0 = rowDist[bx][channel]>=100|| rowDist[bx][channel]<=26;
+                bool b1 = (rowDist[bx][channel] == mx || rowDist[bx][channel] == mn);
+                bool b2 = abs(difference)>=40;
+                bool b3 = dxDist>=2*dxRef;
+                bool b4 = dxDist>4*avgDx;
+                bool b5 = abs(difference)>=std::max(abs(mean_diff),15.);
+                guess_impulse = b0 && b1 && b2 && b3 && b4 && b5;
+            } else {
+                sum_dx_acc += dxDist;
+                if (bx >= 8) sum_dx_acc -= fabs(rowDist[bx-7][channel] - rowDist[bx-8][channel]);
+                double avg_win_dx = sum_dx_acc/std::min(8, bx+1);
 
-            bool guess_impulse_strict = b0 && b1 && b2 && b3 && b4 && b5;
-            bool guess_impulse = strict?guess_impulse_strict:guess_impulse_loose;
+                bool b6 = abs(difference)>=std::max(abs(mean_diff),15.);
+                bool b7 = dxDist >= avg_win_dx;
+                guess_impulse = b6 && b7;
+            }
             if (guess_impulse) {
                 rowOut[bx]= 255;
             }
@@ -132,8 +135,6 @@ static int clean_impulse_row(int cols, const cv::Vec3f *rowDist, const uchar* ro
     return impulse_counter;
 }
 
-void detect_impulses_row_to_mask(int cols, const cv::Vec<float, 3> * vec,
-                                unsigned char * row_out, bool strict);
 // Detect impulsive artifacts over the entire image.
 // For each row, the row-wise detector marks isolated outliers (255)
 // while non-impulse pixels remain 0.
