@@ -1,25 +1,44 @@
 #include "iqalab/color.hpp"
-#include "iqalab/iqalab.hpp"
-#include "iqalab/region_masks.hpp"
+#include "iqalab/image_type.hpp"
+#include "iqalab/mse.hpp"
 #include "iqalab/region_provider.hpp"
 
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <vector>
+
 #include <opencv2/opencv.hpp>
 
-using namespace std;
 namespace fs = std::filesystem;
+using namespace iqa;
 
-fs::path make_output_path(const fs::path& outBaseDir,
-                          const fs::path& inputFile,
-                          const string& suffix = "_regions")
+enum class RegionsMode {
+    PixelFlatMidDetail,  // existing pixel-based provider (masks)
+    Blocks16x16          // new block grid 16x16
+};
+
+constexpr RegionsMode kRegionsMode = RegionsMode::Blocks16x16;
+
+struct CliOptions {
+    fs::path inPath;
+    fs::path outPath;
+};
+
+bool parse_args(int argc, char** argv, CliOptions& opts)
 {
-    fs::path name = inputFile.filename();       // eq. "img01.jpg"
-    fs::path stem = name.stem();               // "img01"
-    fs::path ext  = name.extension();          // ".jpg"
-    fs::path outName = stem.string() + suffix + ext.string();
-    return outBaseDir / outName;
+    if (argc < 3) {
+        std::cerr << "Usage:\n";
+        std::cerr << "  regions_demo <ref_file> <dist_file>\n";
+        std::cerr << "  regions_demo <ref_dir>  <dist_dir>\n";
+        return false;
+    }
+
+    opts.inPath  = argv[1];
+    opts.outPath = argv[2];
+
+    return true;
 }
 
 // refL: CV_32F (0..1) – np. L z Lab albo gray
@@ -82,85 +101,97 @@ cv::Mat visualize_regions(const cv::Mat& bgr, const iqa::RegionMasks& masks)
     return out;
 }
 
-void process_single_file(const fs::path& inPath, const fs::path& outPathBaseDir, const iqa::RegionProvider & rp)
+fs::path make_output_path(const fs::path& outBaseDir,
+                          const fs::path& inputFile,
+                          const std::string & suffix = "_regions")
+{
+    fs::path name = inputFile.filename();       // eq. "img01.jpg"
+    fs::path stem = name.stem();               // "img01"
+    fs::path ext  = name.extension();          // ".jpg"
+    fs::path outName = stem.string() + suffix + ext.string();
+    return outBaseDir / outName;
+}
+
+void process_single_file(const fs::path& inPath, const fs::path& outPath, const iqa::RegionProvider & rp)
 {
     cv::Mat bgr = cv::imread(inPath.string(), cv::IMREAD_COLOR);
     if (bgr.empty()) {
-        cerr << "Cannot read image: " << inPath << endl;
+        std::cerr << "Cannot read image: " << inPath << std::endl;
         return;
     }
-
     cv::Mat labRef;
     iqa::bgr8_to_lab32f(bgr, labRef);
     auto masks = rp.compute_regions(labRef);
     cv::Mat vis = visualize_regions(bgr, masks);
-    const fs::path& outDir  = outPathBaseDir;
-    fs::create_directories(outDir);
-    fs::path outPath = make_output_path(outDir, inPath, "_regions");
+    const fs::path& outDir  = outPath;
     if (!cv::imwrite(outPath.string(), vis)) {
-        cerr << "Cannot write: " << outPath << endl;
+      std::cerr << "Cannot write: " << outPath << std::endl;
+    }
+}
+
+void process_directory(const fs::path& inDir, const fs::path& outDir, const iqa::RegionProvider & rp) {
+    fs::create_directories(outDir);
+    // collect a list of images to know N
+    std::vector<fs::path> files;
+    for (auto& e : fs::directory_iterator(inDir)) {
+        if (iqa::is_image_file(e.path())) {
+            files.push_back(e.path());
+        }
+    }
+    const size_t total = files.size();
+    fs::create_directories(outDir);
+
+    for (size_t i = 0; i < total; ++i) {
+        const fs::path& p = files[i];
+        // print progress: 5/3000 /path/to/file
+        std::cout << (i+1) << "/" << total << " " << p << std::endl;
+        fs::path outPath = make_output_path(outDir, p, "_regions");
+        process_single_file(p, outPath, rp);
     }
 }
 
 int main(int argc, char** argv)
 {
-    if (argc < 3) {
-        cerr << "Usage: regions_demo <input_file|input_dir> <output_file|output_dir>\n";
+    CliOptions opts;
+    if (!parse_args(argc, argv, opts)) {
         return 1;
     }
+    bool inIsFile  = fs::is_regular_file(opts.inPath);
+    bool outIsFile = fs::is_regular_file(opts.outPath);
 
-    fs::path inPath  = argv[1];
-    fs::path outPath = argv[2];
+    bool inIsDir   = fs::is_directory(opts.inPath);
+    bool outIsDir  = fs::is_directory(opts.outPath);
+
+    if (!outIsFile && !outIsDir) {
+        bool outHasExtension = !opts.outPath.extension().empty();
+        if (outHasExtension)
+            outIsFile = true;
+        else
+            outIsDir = true;
+    }
 
     auto regionProvider = iqa::make_default_region_provider();
-    if (fs::is_regular_file(inPath)) {
-        if (fs::is_directory(outPath)) {
-            // output: directory – we generate a name with a suffix
-            process_single_file(inPath, outPath, *regionProvider);
-        } else {
-            // output: exact file – we will use it without the suffix
-            cv::Mat bgr = cv::imread(inPath.string(), cv::IMREAD_COLOR);
-            if (bgr.empty()) {
-                cerr << "Cannot read image: " << inPath << endl;
-                return 1;
-            }
-            cv::Mat gray8, refL;
-            cv::cvtColor(bgr, gray8, cv::COLOR_BGR2GRAY);
-            cv::Mat labRef;
-            iqa::bgr8_to_lab32f(bgr, labRef);
-            auto masks = regionProvider->compute_regions(labRef);
-            cv::Mat vis = visualize_regions(bgr, masks);
-            auto parentPath = outPath.parent_path();
-            if (!parentPath.empty())
-                fs::create_directories(outPath.parent_path());
-            if (!cv::imwrite(outPath.string(), vis)) {
-                cerr << "Cannot write: " << outPath << endl;
-                return 1;
-            }
-        }
-    }
-    else if (fs::is_directory(inPath)) {
-        // input: catalog
-        const fs::path& outDir = outPath;
-        fs::create_directories(outDir);
-        // collect a list of images to know N
-        std::vector<fs::path> files;
-        for (auto& e : fs::directory_iterator(inPath)) {
-            if (iqa::is_image_file(e.path())) {
-                files.push_back(e.path());
-            }
-        }
-        const size_t total = files.size();
-        for (size_t i = 0; i < total; ++i) {
-            const fs::path& p = files[i];
-            // print progress: 5/3000 /path/to/file
-            cout << (i+1) << "/" << total << " " << p << endl;
-            process_single_file(p, outDir, *regionProvider);
-        }
-    }
-    else {
-        cerr << "Input is neither file nor directory.\n";
+    if (inIsFile && outIsFile) {
+        auto start = std::chrono::high_resolution_clock::now();
+        process_single_file(opts.inPath, opts.outPath, *regionProvider);
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto duration = duration_cast<std::chrono::milliseconds>(stop - start);
+        std::cout << "duration: " << duration.count()/1e3 << " s.\n";
+    } else if (inIsDir && outIsDir) {
+        auto start = std::chrono::high_resolution_clock::now();
+        process_directory(opts.inPath, opts.outPath, *regionProvider);
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto duration = duration_cast<std::chrono::milliseconds>(stop - start);
+        std::cout << "duration: " << duration.count()/1e3 << " s.\n";
+    } else {
+        std::cerr << "ERROR: either all three paths must be files (ref, dist, out_file),\n"
+                  << "or ref/dist must be directories and out must be a directory.\n";
+        if (inIsFile)
+            std::cerr << opts.inPath << " is file but " << opts.outPath << " is a directory.\n";
+        else
+            std::cerr << opts.inPath << " is directory but " << opts.outPath << " is a file.\n";
         return 1;
     }
+
     return 0;
 }
