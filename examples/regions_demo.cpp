@@ -25,9 +25,9 @@ cv::Mat visualize_regions(const cv::Mat& bgr, const iqa::RegionMasks& masks)
 {
     CV_Assert(!bgr.empty());
     CV_Assert(bgr.type() == CV_8UC3);
-    CV_Assert(masks.flatMask.size()   == bgr.size());
-    CV_Assert(masks.detailMask.size() == bgr.size());
-    CV_Assert(masks.midMask.size()    == bgr.size());
+    CV_Assert(masks.flat.size()   == bgr.size());
+    CV_Assert(masks.detail.size() == bgr.size());
+    CV_Assert(masks.mid.size()    == bgr.size());
 
     cv::Mat out = bgr.clone();
 
@@ -36,9 +36,9 @@ cv::Mat visualize_regions(const cv::Mat& bgr, const iqa::RegionMasks& masks)
     const float alphaDetail = 0.35f;
 
     for (int y = 0; y < out.rows; ++y) {
-        const uchar* flatRow   = masks.flatMask.ptr<uchar>(y);
-        const uchar* midRow    = masks.midMask.ptr<uchar>(y);
-        const uchar* detailRow = masks.detailMask.ptr<uchar>(y);
+        const uchar* flatRow   = masks.flat.ptr<uchar>(y);
+        const uchar* midRow    = masks.mid.ptr<uchar>(y);
+        const uchar* detailRow = masks.detail.ptr<uchar>(y);
 
         cv::Vec3b* prow = out.ptr<cv::Vec3b>(y);
 
@@ -87,7 +87,7 @@ void process_single_file(const fs::path& inPath, const fs::path& outPathBaseDir)
         cerr << "Cannot read image: " << inPath << endl;
         return;
     }
-    iqa::RegionMasks masks = iqa::computeRegionMasks32(bgr);
+    iqa::RegionMasks masks = iqa::compute_region_masks32(bgr);
     cv::Mat vis = visualize_regions(bgr, masks);
     const fs::path& outDir  = outPathBaseDir;
     fs::create_directories(outDir);
@@ -122,7 +122,7 @@ int main(int argc, char** argv)
             cv::cvtColor(bgr, gray8, cv::COLOR_BGR2GRAY);
             gray8.convertTo(refL, CV_32F, 1.0/255.0);
 
-            iqa::RegionMasks masks = iqa::computeRegionMasks32(refL);
+            iqa::RegionMasks masks = iqa::compute_region_masks32(refL);
             cv::Mat vis = visualize_regions(bgr, masks);
             auto parentPath = outPath.parent_path();
             if (!parentPath.empty())

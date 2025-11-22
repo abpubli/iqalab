@@ -22,19 +22,57 @@ static float percentile_from_vector(std::vector<float>& vals, float p)
     return (1.0f - t) * vals[i] + t * vals[j];
 }
 
-RegionMasks computeRegionMasks(const cv::Mat& bgr,
+RegionMasks compute_region_masks(const cv::Mat& img,
                                float flatPercentile,
-                               float detailPercentile) {
+                               float detailPercentile)
+{
+    CV_Assert(!img.empty());
 
-    CV_Assert(bgr.type() == CV_8UC3);
-    cv::Mat gray8, refL;
-    cv::cvtColor(bgr, gray8, cv::COLOR_BGR2GRAY);
-    gray8.convertTo(refL, CV_32F, 1.0/255.0);
-    return computeRegionMasks32(refL, flatPercentile, detailPercentile);
+    cv::Mat gray32;
+
+    if (img.type() == CV_32FC3)
+    {
+        // Zakładamy Lab32: bierzemy kanał L
+        cv::Mat L;
+        cv::extractChannel(img, L, 0);
+        if (L.type() == CV_32FC1)
+        {
+            gray32 = L;
+        }
+        else
+        {
+            L.convertTo(gray32, CV_32F);
+        }
+    }
+    else if (img.type() == CV_8UC3)
+    {
+        // Zakładamy BGR8: konwersja do grayscale
+        cv::Mat gray8;
+        cv::cvtColor(img, gray8, cv::COLOR_BGR2GRAY);
+        gray8.convertTo(gray32, CV_32F);
+    }
+    else if (img.type() == CV_32FC1)
+    {
+        // Już mamy gray32
+        gray32 = img;
+    }
+    else if (img.type() == CV_8UC1)
+    {
+        // Szary 8-bit – też można przyjąć
+        img.convertTo(gray32, CV_32F);
+    }
+    else
+    {
+        CV_Error(cv::Error::StsBadArg,
+                 "compute_region_masks: unsupported image type");
+    }
+
+    return compute_region_masks32(gray32);
 }
 
 
-RegionMasks computeRegionMasks32(const cv::Mat& refL,
+
+RegionMasks compute_region_masks32(const cv::Mat& refL,
                                float flatPercentile,
                                float detailPercentile)
 {
@@ -59,15 +97,15 @@ RegionMasks computeRegionMasks32(const cv::Mat& refL,
     float thrFlat   = percentile_from_vector(vals, flatPercentile);
     float thrDetail = percentile_from_vector(vals, detailPercentile);
 
-    masks.flatMask.create(refL.size(), CV_8U);
-    masks.detailMask.create(refL.size(), CV_8U);
-    masks.midMask.create(refL.size(), CV_8U);
+    masks.flat.create(refL.size(), CV_8U);
+    masks.detail.create(refL.size(), CV_8U);
+    masks.mid.create(refL.size(), CV_8U);
 
     for (int y = 0; y < refL.rows; ++y) {
         const float* grow = masks.gradMag.ptr<float>(y);
-        auto* frow = masks.flatMask.ptr<uchar>(y);
-        auto* drow = masks.detailMask.ptr<uchar>(y);
-        auto* mrow = masks.midMask.ptr<uchar>(y);
+        auto* frow = masks.flat.ptr<uchar>(y);
+        auto* drow = masks.detail.ptr<uchar>(y);
+        auto* mrow = masks.mid.ptr<uchar>(y);
 
         for (int x = 0; x < refL.cols; ++x) {
             float g = grow[x];
@@ -140,7 +178,7 @@ ImpulseScore score_impulses(const cv::Mat& refL,
     CV_Assert(refL.size() == distL.size());
 
     ImpulseScore s{};
-    masked_absdiff_stats(refL, distL, masks.flatMask,
+    masked_absdiff_stats(refL, distL, masks.flat,
                          s.meanOnFlat, s.p95OnFlat, s.countFlat);
     return s;
 }
@@ -210,7 +248,7 @@ BlurScore score_blur(const cv::Mat& refL,
     cv::GaussianBlur(magD, magD, cv::Size(3, 3), 0.8);
 
     BlurScore s{};
-    masked_gradloss_stats(masks.gradMag, magD, masks.detailMask,
+    masked_gradloss_stats(masks.gradMag, magD, masks.detail,
                           s.meanLossOnDetail, s.p95LossOnDetail, s.countDetail);
     return s;
 }

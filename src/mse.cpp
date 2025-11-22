@@ -3,7 +3,7 @@
 #include "iqalab/mse.hpp"
 #include <stdexcept>
 
-namespace iqa
+namespace iqa::mse
 {
 double compute_mse_single_channel(const cv::Mat& ref, const cv::Mat& test)
 {
@@ -59,5 +59,42 @@ double compute_mse(const cv::Mat& ref, const cv::Mat& test)
     mseSum += compute_mse_single_channel(refCh[c], testCh[c]);
   }
   return mseSum / 3.0;
+}
+
+double lab_channel_mse(const cv::Mat& labRef,
+                       const cv::Mat& labDist,
+                       int channel,
+                       const cv::Mat& mask)
+{
+  CV_Assert(labRef.type() == CV_32FC3);
+  CV_Assert(labDist.type() == CV_32FC3);
+  CV_Assert(labRef.size() == labDist.size());
+  CV_Assert(mask.empty() || (mask.type() == CV_8U && mask.size() == labRef.size()));
+
+  cv::Mat refCh, distCh;
+  cv::extractChannel(labRef,  refCh,  channel);
+  cv::extractChannel(labDist, distCh, channel);
+
+  cv::Mat diff;
+  cv::subtract(refCh, distCh, diff, cv::noArray(), CV_32F);
+
+  cv::Mat diff2;
+  cv::multiply(diff, diff, diff2);
+
+  if (!mask.empty())
+  {
+    cv::Mat maskFloat;
+    mask.convertTo(maskFloat, CV_32F, 1.0 / 255.0);
+    cv::Scalar sumDiff2 = cv::sum(diff2.mul(maskFloat));
+    double sumMask = cv::sum(maskFloat)[0];
+    if (sumMask <= 0.0)
+      return 0.0;
+    return static_cast<double>(sumDiff2[0] / sumMask);
+  }
+  else
+  {
+    cv::Scalar meanDiff2 = cv::mean(diff2);
+    return static_cast<double>(meanDiff2[0]);
+  }
 }
 }

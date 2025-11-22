@@ -18,6 +18,8 @@ set(IQALAB_SOURCES
         color.cpp
         ../include/iqalab/mse.hpp
         mse.cpp
+        ../include/iqalab/blur.hpp
+        blur.cpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})

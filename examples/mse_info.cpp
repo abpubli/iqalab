@@ -69,7 +69,7 @@ void process_single_pair_file(const fs::path& refPath,
         return;
     }
 
-    double mse = compute_mse(refBGR, distBGR);
+    double mse = mse::compute_mse(refBGR, distBGR);
 
     std::cout << refPath << " " << distPath << " : mse=" << mse
             << "rmse=" << sqrt(mse) << "\n";
@@ -135,7 +135,7 @@ void process_directory_mode(const CliOptions& opts)
                 continue;
             }
 
-            auto mse = compute_mse(refBGR, distBGR);
+            auto mse = mse::compute_mse(refBGR, distBGR);
 
             // CSV: dist filename
             csv << distPath.filename().string() << "," << mse

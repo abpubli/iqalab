@@ -3,14 +3,18 @@
 namespace iqa {
 
 struct RegionMasks {
-  cv::Mat flatMask;    // CV_8U, 255 = flat
-  cv::Mat detailMask;  // CV_8U, 255 = detail
-  cv::Mat midMask;     // CV_8U, 255 = pośrednie
+  cv::Mat flat;    // CV_8U, 255 = flat
+  cv::Mat detail;  // CV_8U, 255 = detail
+  cv::Mat mid;     // CV_8U, 255 = pośrednie
   cv::Mat gradMag;     // CV_32F, |grad| refL
 };
 
+RegionMasks compute_region_masks(const cv::Mat& img,
+                               float flatPercentile   = 0.3f,
+                               float detailPercentile = 0.7f);
+
 // refL: CV_32F, channel L* or gray
-RegionMasks computeRegionMasks32(const cv::Mat& refL,
+RegionMasks compute_region_masks32(const cv::Mat& refL,
                                float flatPercentile   = 0.3f,
                                float detailPercentile = 0.7f);
 

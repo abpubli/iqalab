@@ -21,3 +21,6 @@ target_link_libraries(blocking_mask_tool PRIVATE iqalab)
 
 add_executable(mse_info mse_info.cpp)
 target_link_libraries(mse_info PRIVATE iqalab)
+
+add_executable(blur_mse_info.cpp blur_mse_info.cpp)
+target_link_libraries(blur_mse_info.cpp PRIVATE iqalab)
