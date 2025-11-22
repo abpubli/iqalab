@@ -1,5 +1,7 @@
+#include "iqalab/color.hpp"
 #include "iqalab/iqalab.hpp"
 #include "iqalab/region_masks.hpp"
+#include "iqalab/region_provider.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -80,14 +82,17 @@ cv::Mat visualize_regions(const cv::Mat& bgr, const iqa::RegionMasks& masks)
     return out;
 }
 
-void process_single_file(const fs::path& inPath, const fs::path& outPathBaseDir)
+void process_single_file(const fs::path& inPath, const fs::path& outPathBaseDir, const iqa::RegionProvider & rp)
 {
     cv::Mat bgr = cv::imread(inPath.string(), cv::IMREAD_COLOR);
     if (bgr.empty()) {
         cerr << "Cannot read image: " << inPath << endl;
         return;
     }
-    iqa::RegionMasks masks = iqa::compute_region_masks32(bgr);
+
+    cv::Mat labRef;
+    iqa::bgr8_to_lab32f(bgr, labRef);
+    auto masks = rp.compute_regions(labRef);
     cv::Mat vis = visualize_regions(bgr, masks);
     const fs::path& outDir  = outPathBaseDir;
     fs::create_directories(outDir);
@@ -107,10 +112,11 @@ int main(int argc, char** argv)
     fs::path inPath  = argv[1];
     fs::path outPath = argv[2];
 
+    auto regionProvider = iqa::make_default_region_provider();
     if (fs::is_regular_file(inPath)) {
         if (fs::is_directory(outPath)) {
             // output: directory – we generate a name with a suffix
-            process_single_file(inPath, outPath);
+            process_single_file(inPath, outPath, *regionProvider);
         } else {
             // output: exact file – we will use it without the suffix
             cv::Mat bgr = cv::imread(inPath.string(), cv::IMREAD_COLOR);
@@ -120,9 +126,9 @@ int main(int argc, char** argv)
             }
             cv::Mat gray8, refL;
             cv::cvtColor(bgr, gray8, cv::COLOR_BGR2GRAY);
-            gray8.convertTo(refL, CV_32F, 1.0/255.0);
-
-            iqa::RegionMasks masks = iqa::compute_region_masks32(refL);
+            cv::Mat labRef;
+            iqa::bgr8_to_lab32f(bgr, labRef);
+            auto masks = regionProvider->compute_regions(labRef);
             cv::Mat vis = visualize_regions(bgr, masks);
             auto parentPath = outPath.parent_path();
             if (!parentPath.empty())
@@ -149,7 +155,7 @@ int main(int argc, char** argv)
             const fs::path& p = files[i];
             // print progress: 5/3000 /path/to/file
             cout << (i+1) << "/" << total << " " << p << endl;
-            process_single_file(p, outDir);
+            process_single_file(p, outDir, *regionProvider);
         }
     }
     else {

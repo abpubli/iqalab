@@ -1,3 +1,4 @@
+#include "iqalab/region_provider.hpp"
 #include "iqalab/utils/path_utils.hpp"
 
 #include <iqalab/blur.hpp>
@@ -231,6 +232,7 @@ int main(int argc, char** argv)
         }
     }
 
+    auto regionProvider = iqa::make_default_region_provider();
     // CSV header.
     //
     // We report:
@@ -268,7 +270,7 @@ int main(int argc, char** argv)
 
         // Compute region masks on the reference image (Lab space).
         // This uses your existing region mask computation from iqa.
-        iqa::RegionMasks regionMasks = iqa::compute_region_masks(labRef);
+        iqa::RegionMasks regionMasks = regionProvider->compute_regions(labRef);
 
         // Pixel counts for original regions.
         double n_region_flat   = static_cast<double>(cv::countNonZero(regionMasks.flat));
