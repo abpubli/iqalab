@@ -23,7 +23,7 @@ struct Pair
 
 // Load image from disk and convert to Lab (CV_32FC3).
 // This helper keeps all color-space conversions in one place.
-static bool load_image_lab32(const std::string& path, cv::Mat& lab)
+bool load_image_lab32(const std::string& path, cv::Mat& lab)
 {
     cv::Mat bgr = cv::imread(path, cv::IMREAD_COLOR);
     if (bgr.empty())
@@ -41,7 +41,7 @@ static bool load_image_lab32(const std::string& path, cv::Mat& lab)
 // Load pairs from a text file where each line contains:
 //   <ref_path> <dist_path>
 // separated by whitespace.
-static std::vector<Pair> load_pairs_from_file(const std::string& listPath)
+std::vector<Pair> load_pairs_from_file(const std::string& listPath)
 {
     std::vector<Pair> pairs;
     std::ifstream in(listPath);
@@ -62,7 +62,7 @@ static std::vector<Pair> load_pairs_from_file(const std::string& listPath)
 // Build pairs from two directory roots using file grouping utilities.
 // This uses iqa::utils::group_distorted_by_reference() to associate
 // each reference file with its distorted counterparts.
-static std::vector<Pair> load_pairs_from_dirs(const std::string& refsRoot,
+std::vector<Pair> load_pairs_from_dirs(const std::string& refsRoot,
                                               const std::string& distsRoot)
 {
     // in iqalab/utils/file_grouping.hpp and file_grouping.cpp.
@@ -109,7 +109,7 @@ static std::vector<Pair> load_pairs_from_dirs(const std::string& refsRoot,
 }
 
 // Print usage information for this CLI tool.
-static void print_usage(const char* argv0)
+void print_usage(const char* argv0)
 {
     std::cerr << "Usage:\n";
     std::cerr << "  " << argv0 << " ref.png dist.png\n";
