@@ -1,7 +1,6 @@
 set(IQALAB_SOURCES
         iqalab.cpp
         blocking.cpp
-        region_masks.cpp
         image_type.cpp
         color_shift.cpp
         math_utils.cpp
@@ -16,14 +15,13 @@ set(IQALAB_SOURCES
         flat_blocking.cpp
         dithering.cpp
         color.cpp
-        ../include/iqalab/mse.hpp
         mse.cpp
-        ../include/iqalab/blur.hpp
         blur.cpp
-        ../include/iqalab/region_provider.hpp
-        region_provider.cpp
-        ../include/iqalab/halo.hpp
         halo.cpp
+        region_masks.cpp
+        region_provider.cpp
+        visualize_regions.cpp
+        region_blocks.cpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})

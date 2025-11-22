@@ -2,6 +2,7 @@
 #include "iqalab/image_type.hpp"
 #include "iqalab/mse.hpp"
 #include "iqalab/region_provider.hpp"
+#include <iqalab/visualize_regions.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -18,8 +19,6 @@ enum class RegionsMode {
     PixelFlatMidDetail,  // existing pixel-based provider (masks)
     Blocks16x16          // new block grid 16x16
 };
-
-constexpr RegionsMode kRegionsMode = RegionsMode::Blocks16x16;
 
 struct CliOptions {
     fs::path inPath;
@@ -41,66 +40,6 @@ bool parse_args(int argc, char** argv, CliOptions& opts)
     return true;
 }
 
-// refL: CV_32F (0..1) – np. L z Lab albo gray
-cv::Mat visualize_regions(const cv::Mat& bgr, const iqa::RegionMasks& masks)
-{
-    CV_Assert(!bgr.empty());
-    CV_Assert(bgr.type() == CV_8UC3);
-    CV_Assert(masks.flat.size()   == bgr.size());
-    CV_Assert(masks.detail.size() == bgr.size());
-    CV_Assert(masks.mid.size()    == bgr.size());
-
-    cv::Mat out = bgr.clone();
-
-    const float alphaFlat   = 0.35f;
-    const float alphaMid    = 0.35f;
-    const float alphaDetail = 0.35f;
-
-    for (int y = 0; y < out.rows; ++y) {
-        const uchar* flatRow   = masks.flat.ptr<uchar>(y);
-        const uchar* midRow    = masks.mid.ptr<uchar>(y);
-        const uchar* detailRow = masks.detail.ptr<uchar>(y);
-
-        cv::Vec3b* prow = out.ptr<cv::Vec3b>(y);
-
-        for (int x = 0; x < out.cols; ++x) {
-            cv::Vec3b& p = prow[x];
-
-            // BGR
-            float B = static_cast<float>(p[0]);
-            float G = static_cast<float>(p[1]);
-            float R = static_cast<float>(p[2]);
-
-            if (flatRow[x]) {
-                // niebieskawy
-                const cv::Vec3f overlay(200.f, 150.f,  50.f); // B,G,R
-                B = (1.0f - alphaFlat) * B + alphaFlat * overlay[0];
-                G = (1.0f - alphaFlat) * G + alphaFlat * overlay[1];
-                R = (1.0f - alphaFlat) * R + alphaFlat * overlay[2];
-            }
-            if (midRow[x]) {
-                // zielonkawy
-                const cv::Vec3f overlay( 50.f, 200.f,  50.f);
-                B = (1.0f - alphaMid) * B + alphaMid * overlay[0];
-                G = (1.0f - alphaMid) * G + alphaMid * overlay[1];
-                R = (1.0f - alphaMid) * R + alphaMid * overlay[2];
-            }
-            if (detailRow[x]) {
-                // czerwony
-                const cv::Vec3f overlay( 50.f,  50.f, 200.f);
-                B = (1.0f - alphaDetail) * B + alphaDetail * overlay[0];
-                G = (1.0f - alphaDetail) * G + alphaDetail * overlay[1];
-                R = (1.0f - alphaDetail) * R + alphaDetail * overlay[2];
-            }
-
-            p[0] = static_cast<uchar>(std::clamp(B, 0.0f, 255.0f));
-            p[1] = static_cast<uchar>(std::clamp(G, 0.0f, 255.0f));
-            p[2] = static_cast<uchar>(std::clamp(R, 0.0f, 255.0f));
-        }
-    }
-    return out;
-}
-
 fs::path make_output_path(const fs::path& outBaseDir,
                           const fs::path& inputFile,
                           const std::string & suffix = "_regions")
@@ -112,20 +51,133 @@ fs::path make_output_path(const fs::path& outBaseDir,
     return outBaseDir / outName;
 }
 
-void process_single_file(const fs::path& inPath, const fs::path& outPath, const iqa::RegionProvider & rp)
+#include <iostream>
+#include <filesystem>
+
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+
+#include <iqalab/region_blocks.hpp>   // BlockGrid16, BlockRegionMasks, ...
+#include <iqalab/region_provider.hpp> // or wherever RegionProvider / RegionMasks live
+#include <iqalab/color.hpp>   // bgr8_to_lab32f
+#include <iqalab/visualize_regions.hpp>
+
+namespace fs = std::filesystem;
+
+void process_single_file(
+    const fs::path& inPath,
+    const fs::path& outPath,
+    const iqa::RegionProvider& rp)
 {
+    // 1) Load input image.
     cv::Mat bgr = cv::imread(inPath.string(), cv::IMREAD_COLOR);
     if (bgr.empty()) {
         std::cerr << "Cannot read image: " << inPath << std::endl;
         return;
     }
+
+    // 2) Convert to Lab (float) for region provider.
     cv::Mat labRef;
     iqa::bgr8_to_lab32f(bgr, labRef);
-    auto masks = rp.compute_regions(labRef);
-    cv::Mat vis = visualize_regions(bgr, masks);
-    const fs::path& outDir  = outPath;
-    if (!cv::imwrite(outPath.string(), vis)) {
-      std::cerr << "Cannot write: " << outPath << std::endl;
+
+    // 3) Compute pixel-level region masks.
+    iqa::RegionMasks masks = rp.compute_regions(labRef);
+
+    // Sanity checks: all masks must match image size.
+    CV_Assert(masks.flat.size()   == bgr.size());
+    CV_Assert(masks.mid.size()    == bgr.size());
+    CV_Assert(masks.detail.size() == bgr.size());
+    CV_Assert(masks.flat.type()   == CV_8UC1);
+    CV_Assert(masks.mid.type()    == CV_8UC1);
+    CV_Assert(masks.detail.type() == CV_8UC1);
+
+    // 4) Visualize pixel-level regions (existing behaviour).
+    cv::Mat visPixel = visualize_regions(bgr, masks);
+
+    // 5) Build block-level masks (16x16) from pixel masks.
+    //
+    // NOTE: RegionMasks order is:
+    //   - masks.flat
+    //   - masks.detail
+    //   - masks.mid
+    //
+    // Our block-building function expects:
+    //   (flatMask, midMask, detailMask)
+    //
+    // so we pass masks.mid as "mid".
+    using namespace iqa::regions;
+
+    const int blockSize = 16;
+    BlockGrid16 grid = make_block16_grid(bgr.size(), blockSize);
+
+    BlockRegionMasks blockMasks =
+        make_block_region_masks_from_pixel_masks(
+            grid,
+            masks.flat,    // flat
+            masks.mid,     // mid
+            masks.detail,  // detail
+            0.5,           // minDominantFrac
+            0.3            // strongPairFrac: flat+detail large, mid small -> classify as mid
+        );
+
+    // 6) Visualize block-level classification.
+    //
+    // Here we draw coloured rectangles per block, based on which block mask is set.
+    cv::Mat visBlock = bgr.clone();
+
+    for (int by = 0; by < grid.blocksY; ++by) {
+        for (int bx = 0; bx < grid.blocksX; ++bx) {
+            const int blockIdx = by * grid.blocksX + bx;
+            const cv::Rect r = block_rect(grid, blockIdx);
+            if (r.width <= 0 || r.height <= 0)
+                continue;
+
+            // Because make_block_region_masks_from_pixel_masks() fills whole block
+            // uniformly with 255 in exactly one of the masks (or leaves all zero),
+            // we can check a single pixel in the ROI to infer the class.
+            cv::Mat1b flatROI   = blockMasks.flat(r);
+            cv::Mat1b midROI    = blockMasks.mid(r);
+            cv::Mat1b detailROI = blockMasks.detail(r);
+
+            const bool isFlat   = (flatROI.at<uchar>(0, 0)   == 255);
+            const bool isMid    = (midROI.at<uchar>(0, 0)    == 255);
+            const bool isDetail = (detailROI.at<uchar>(0, 0) == 255);
+
+            cv::Scalar color;
+            if (isFlat) {
+                // Blue for flat.
+                color = cv::Scalar(255, 0, 0);
+            } else if (isMid) {
+                // Yellow for mid.
+                color = cv::Scalar(0, 255, 255);
+            } else if (isDetail) {
+                // Red for detail.
+                color = cv::Scalar(0, 0, 255);
+            } else {
+                // Gray for unclassified blocks.
+                color = cv::Scalar(128, 128, 128);
+            }
+
+            cv::rectangle(visBlock, r, color, 1);
+        }
+    }
+
+    // 7) Save outputs.
+    //
+    // Pixel-level visualization = original outPath.
+    // Block-level visualization = outPath with "_block" suffix.
+    fs::path outPixel = outPath;
+    fs::path outBlock = outPath;
+
+    outBlock.replace_filename(
+        outPath.stem().string() + "_block" + outPath.extension().string()
+    );
+
+    if (!cv::imwrite(outPixel.string(), visPixel)) {
+        std::cerr << "Cannot write: " << outPixel << std::endl;
+    }
+    if (!cv::imwrite(outBlock.string(), visBlock)) {
+        std::cerr << "Cannot write: " << outBlock << std::endl;
     }
 }
 
