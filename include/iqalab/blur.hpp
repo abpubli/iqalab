@@ -16,5 +16,10 @@ double relative_blur_L(const cv::Mat& labRef,
                        const cv::Mat& mask = cv::Mat(),
                        double eps = 1e-6);
 
+double relative_blur_ab(const cv::Mat& labRef,
+                        const cv::Mat& labDist,
+                        const cv::Mat& mask = cv::Mat(),
+                        double eps = 1e-6);
+
 // (optional later) multi-scale blur, etc.
 }

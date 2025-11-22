@@ -21,6 +21,14 @@ struct Pair
     std::string distPath;
 };
 
+// Masks used for blur measurement (dilated regions).
+struct BlurRegionMasks
+{
+    cv::Mat flat;
+    cv::Mat mid;
+    cv::Mat detail;
+};
+
 // Load image from disk and convert to Lab (CV_32FC3).
 // This helper keeps all color-space conversions in one place.
 bool load_image_lab32(const std::string& path, cv::Mat& lab)
@@ -108,6 +116,47 @@ std::vector<Pair> load_pairs_from_dirs(const std::string& refsRoot,
     return pairs;
 }
 
+// Create dilated masks for blur measurement.
+//
+// regionMasks.* are original flat/mid/detail masks from iqa::compute_region_masks()
+// (0/255, CV_8U). For blur we dilate these masks with configurable radii in pixels.
+//
+// r_flat, r_mid, r_detail:
+//   - dilation radii for each region (0 = no dilation, use original mask).
+BlurRegionMasks make_blur_region_masks(const iqa::RegionMasks& regionMasks,
+                                       int r_flat,
+                                       int r_mid,
+                                       int r_detail)
+{
+    BlurRegionMasks blurMasks;
+
+    auto dilate_if_needed = [](const cv::Mat& srcMask, int r) -> cv::Mat
+    {
+        CV_Assert(srcMask.type() == CV_8U);
+        if (r <= 0)
+        {
+            // No dilation required, just return a copy.
+            return srcMask.clone();
+        }
+
+        const int k = 2 * r + 1;
+        cv::Mat kernel = cv::getStructuringElement(
+            cv::MORPH_ELLIPSE,
+            cv::Size(k, k)
+        );
+
+        cv::Mat dst;
+        cv::dilate(srcMask, dst, kernel);
+        return dst;
+    };
+
+    blurMasks.flat   = dilate_if_needed(regionMasks.flat,   r_flat);
+    blurMasks.mid    = dilate_if_needed(regionMasks.mid,    r_mid);
+    blurMasks.detail = dilate_if_needed(regionMasks.detail, r_detail);
+
+    return blurMasks;
+}
+
 // Print usage information for this CLI tool.
 void print_usage(const char* argv0)
 {
@@ -180,18 +229,24 @@ int main(int argc, char** argv)
 
             return 1;
         }
-        // Single pair mode
-
     }
-    // CSV header
+
+    // CSV header.
+    //
+    // We report:
+    // - per-region pixel counts for original masks (region_*),
+    // - per-region pixel counts for dilated masks used for blur (blur_*),
+    // - blur in L and in a+b per region,
+    // - MSE in L and combined MSE in a+b (MSE_ab) globally and per region.
     std::cout
         << "ref_path,dist_path,"
-        << "blur_L_global,"
+        << "n_region_flat,n_region_mid,n_region_detail,"
+        << "n_blur_flat,n_blur_mid,n_blur_detail,"
         << "blur_L_flat,blur_L_mid,blur_L_detail,"
-        << "mse_L_all,mse_a_all,mse_b_all,"
+        << "blur_ab_flat,blur_ab_mid,blur_ab_detail,"
+        << "mse_L_all,mse_ab_all,"
         << "mse_L_flat,mse_L_mid,mse_L_detail,"
-        << "mse_a_flat,mse_a_mid,mse_a_detail,"
-        << "mse_b_flat,mse_b_mid,mse_b_detail"
+        << "mse_ab_flat,mse_ab_mid,mse_ab_detail"
         << "\n";
 
     for (const auto& p : pairs)
@@ -206,47 +261,83 @@ int main(int argc, char** argv)
 
         if (labRef.size() != labDist.size())
         {
-            std::cerr << "Size mismatch: " << p.refPath << " vs " << p.distPath << "\n";
+            std::cerr << "Size mismatch: " << p.refPath
+                      << " vs " << p.distPath << "\n";
             continue;
         }
 
         // Compute region masks on the reference image (Lab space).
-        // This uses your existing region mask computation from iqalab.
-        iqa::RegionMasks masks = iqa::compute_region_masks(labRef);
+        // This uses your existing region mask computation from iqa.
+        iqa::RegionMasks regionMasks = iqa::compute_region_masks(labRef);
 
-        // Relative blur in L channel (global and per-region).
-        double blur_L_global = iqa::blur::relative_blur_L(labRef, labDist);
-        double blur_L_flat   = iqa::blur::relative_blur_L(labRef, labDist, masks.flat);
-        double blur_L_mid    = iqa::blur::relative_blur_L(labRef, labDist, masks.mid);
-        double blur_L_detail = iqa::blur::relative_blur_L(labRef, labDist, masks.detail);
+        // Pixel counts for original regions.
+        double n_region_flat   = static_cast<double>(cv::countNonZero(regionMasks.flat));
+        double n_region_mid    = static_cast<double>(cv::countNonZero(regionMasks.mid));
+        double n_region_detail = static_cast<double>(cv::countNonZero(regionMasks.detail));
 
-        // Global MSE in Lab channels.
+        // Create dilated masks for blur. Radii can be tuned:
+        // - r_flat   = 1: slight dilation around flat areas
+        // - r_mid    = 2: medium dilation for mid-texture
+        // - r_detail = 3: more dilation around strong edges / details
+        const int r_flat   = 1;
+        const int r_mid    = 2;
+        const int r_detail = 3;
+
+        BlurRegionMasks blurMasks = make_blur_region_masks(regionMasks,
+                                                           r_flat,
+                                                           r_mid,
+                                                           r_detail);
+
+        // Pixel counts for blur masks.
+        double n_blur_flat   = static_cast<double>(cv::countNonZero(blurMasks.flat));
+        double n_blur_mid    = static_cast<double>(cv::countNonZero(blurMasks.mid));
+        double n_blur_detail = static_cast<double>(cv::countNonZero(blurMasks.detail));
+
+        // Relative blur in L channel per region (using dilated masks).
+        double blur_L_flat   = iqa::blur::relative_blur_L(labRef, labDist, blurMasks.flat);
+        double blur_L_mid    = iqa::blur::relative_blur_L(labRef, labDist, blurMasks.mid);
+        double blur_L_detail = iqa::blur::relative_blur_L(labRef, labDist, blurMasks.detail);
+
+        // Relative blur in a+b (chroma) per region (using dilated masks).
+        double blur_ab_flat   = iqa::blur::relative_blur_ab(labRef, labDist, blurMasks.flat);
+        double blur_ab_mid    = iqa::blur::relative_blur_ab(labRef, labDist, blurMasks.mid);
+        double blur_ab_detail = iqa::blur::relative_blur_ab(labRef, labDist, blurMasks.detail);
+
+        // Global MSE in Lab channels (no mask).
         double mse_L_all = iqa::mse::lab_channel_mse(labRef, labDist, 0);
         double mse_a_all = iqa::mse::lab_channel_mse(labRef, labDist, 1);
         double mse_b_all = iqa::mse::lab_channel_mse(labRef, labDist, 2);
 
-        // Per-region MSE in Lab channels.
-        double mse_L_flat   = iqa::mse::lab_channel_mse(labRef, labDist, 0, masks.flat);
-        double mse_L_mid    = iqa::mse::lab_channel_mse(labRef, labDist, 0, masks.mid);
-        double mse_L_detail = iqa::mse::lab_channel_mse(labRef, labDist, 0, masks.detail);
+        // Combined chroma MSE: MSE_ab = MSE_a + MSE_b
+        double mse_ab_all = mse_a_all + mse_b_all;
 
-        double mse_a_flat   = iqa::mse::lab_channel_mse(labRef, labDist, 1, masks.flat);
-        double mse_a_mid    = iqa::mse::lab_channel_mse(labRef, labDist, 1, masks.mid);
-        double mse_a_detail = iqa::mse::lab_channel_mse(labRef, labDist, 1, masks.detail);
+        // Per-region MSE in Lab channels (using original, non-dilated masks).
+        double mse_L_flat   = iqa::mse::lab_channel_mse(labRef, labDist, 0, regionMasks.flat);
+        double mse_L_mid    = iqa::mse::lab_channel_mse(labRef, labDist, 0, regionMasks.mid);
+        double mse_L_detail = iqa::mse::lab_channel_mse(labRef, labDist, 0, regionMasks.detail);
 
-        double mse_b_flat   = iqa::mse::lab_channel_mse(labRef, labDist, 2, masks.flat);
-        double mse_b_mid    = iqa::mse::lab_channel_mse(labRef, labDist, 2, masks.mid);
-        double mse_b_detail = iqa::mse::lab_channel_mse(labRef, labDist, 2, masks.detail);
+        double mse_a_flat   = iqa::mse::lab_channel_mse(labRef, labDist, 1, regionMasks.flat);
+        double mse_a_mid    = iqa::mse::lab_channel_mse(labRef, labDist, 1, regionMasks.mid);
+        double mse_a_detail = iqa::mse::lab_channel_mse(labRef, labDist, 1, regionMasks.detail);
+
+        double mse_b_flat   = iqa::mse::lab_channel_mse(labRef, labDist, 2, regionMasks.flat);
+        double mse_b_mid    = iqa::mse::lab_channel_mse(labRef, labDist, 2, regionMasks.mid);
+        double mse_b_detail = iqa::mse::lab_channel_mse(labRef, labDist, 2, regionMasks.detail);
+
+        double mse_ab_flat   = mse_a_flat   + mse_b_flat;
+        double mse_ab_mid    = mse_a_mid    + mse_b_mid;
+        double mse_ab_detail = mse_a_detail + mse_b_detail;
 
         // Output one CSV row per (ref, dist) pair.
         std::cout
             << p.refPath << "," << p.distPath << ","
-            << blur_L_global << ","
+            << n_region_flat << "," << n_region_mid << "," << n_region_detail << ","
+            << n_blur_flat << "," << n_blur_mid << "," << n_blur_detail << ","
             << blur_L_flat << "," << blur_L_mid << "," << blur_L_detail << ","
-            << mse_L_all << "," << mse_a_all << "," << mse_b_all << ","
+            << blur_ab_flat << "," << blur_ab_mid << "," << blur_ab_detail << ","
+            << mse_L_all << "," << mse_ab_all << ","
             << mse_L_flat << "," << mse_L_mid << "," << mse_L_detail << ","
-            << mse_a_flat << "," << mse_a_mid << "," << mse_a_detail << ","
-            << mse_b_flat << "," << mse_b_mid << "," << mse_b_detail
+            << mse_ab_flat << "," << mse_ab_mid << "," << mse_ab_detail
             << "\n";
     }
 
