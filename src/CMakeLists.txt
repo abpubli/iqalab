@@ -22,6 +22,8 @@ set(IQALAB_SOURCES
         blur.cpp
         ../include/iqalab/region_provider.hpp
         region_provider.cpp
+        ../include/iqalab/halo.hpp
+        halo.cpp
 )
 
 add_library(iqalab SHARED ${IQALAB_SOURCES})
