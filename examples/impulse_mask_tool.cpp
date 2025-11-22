@@ -194,6 +194,10 @@ int main(int argc, char** argv)
     } else {
         std::cerr << "ERROR: either all three paths must be files (ref, dist, out_mask_png),\n"
                   << "or ref/dist must be directories and out must be a directory.\n";
+        if (refIsFile)
+            std::cerr << opts.ref << " is file but " << opts.dist << " is a directory.\n";
+        else
+            std::cerr << opts.ref << " is directory but " << opts.dist << " is a file.\n";
         return 1;
     }
 
